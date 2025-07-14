@@ -1,0 +1,6 @@
+Flask
+python-dotenv
+simple-salesforce
+pandas
+plotly
+gunicorn

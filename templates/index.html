@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales & Marketing Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; }
+        .card { background-color: #1F2937; border: 1px solid #374151; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .filter-label { font-size: 0.875rem; font-weight: 500; color: #D1D5DB; }
+        .filter-input { background-color: #374151; border: 1px solid #4B5563; border-radius: 0.5rem; padding: 0.5rem 0.75rem; color: white; }
+    </style>
+</head>
+<body class="text-white">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-white">Sales & Marketing Dashboard</h1>
+            <p class="text-gray-400 mt-1">Live Data from Salesforce</p>
+        </header>
+
+        <!-- Filters Section -->
+        <div class="card mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="start-date" class="filter-label">Start Date</label>
+                    <input type="date" id="start-date" class="filter-input w-full mt-1">
+                </div>
+                <div>
+                    <label for="end-date" class="filter-label">End Date</label>
+                    <input type="date" id="end-date" class="filter-input w-full mt-1">
+                </div>
+                <!-- THE FIX IS HERE: Replaced the <select> with a custom dropdown structure -->
+                <div class="relative">
+                    <label for="sales-region-trigger" class="filter-label">Sales Region(s)</label>
+                    <button id="sales-region-trigger" class="filter-input w-full mt-1 text-left flex justify-between items-center">
+                        <span id="sales-region-text" class="truncate">Select Regions...</span>
+                        <svg class="w-4 h-4 ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="sales-region-dropdown" class="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-md shadow-lg hidden">
+                        <div id="sales-region-options" class="p-2 max-h-60 overflow-y-auto">
+                            <!-- Checkboxes will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                <button id="apply-filters" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full md:w-auto">Apply Filters</button>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card col-span-1 lg:col-span-2">
+                <div id="forecast-chart-container" class="chart-container" style="height: 600px;"></div>
+            </div>
+            <div class="card col-span-1 lg:col-span-2">
+                 <div id="bookings-chart-container" class="chart-container" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', function() {
+            setDefaultDates();
+            populateRegionFilter();
+            setupDropdown();
+            
+            document.getElementById('apply-filters').addEventListener('click', updateDashboard);
+            
+            updateDashboard();
+        });
+
+        function setDefaultDates() {
+            const endDateEl = document.getElementById('end-date');
+            const startDateEl = document.getElementById('start-date');
+            const today = new Date();
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+            endDateEl.value = today.toISOString().split('T')[0];
+            startDateEl.value = oneYearAgo.toISOString().split('T')[0];
+        }
+
+        function populateRegionFilter() {
+            const optionsContainer = document.getElementById('sales-region-options');
+            fetch('/api/filters/sales-regions')
+                .then(response => response.json())
+                .then(regions => {
+                    regions.forEach(region => {
+                        const optionDiv = document.createElement('div');
+                        optionDiv.classList.add('flex', 'items-center', 'p-2', 'rounded', 'hover:bg-gray-600', 'cursor-pointer');
+                        
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.id = `region-${region.replace(/\s+/g, '-')}`;
+                        checkbox.value = region;
+                        checkbox.classList.add('h-4', 'w-4', 'bg-gray-600', 'border-gray-500', 'text-blue-500', 'focus:ring-blue-500', 'cursor-pointer');
+                        
+                        const label = document.createElement('label');
+                        label.htmlFor = checkbox.id;
+                        label.textContent = region;
+                        label.classList.add('ml-2', 'text-sm', 'text-gray-200', 'cursor-pointer', 'flex-grow');
+                        
+                        optionDiv.appendChild(checkbox);
+                        optionDiv.appendChild(label);
+                        
+                        checkbox.addEventListener('change', updateRegionDisplayText);
+                        // Allow clicking the whole div to toggle the checkbox
+                        optionDiv.addEventListener('click', (e) => {
+                            if (e.target.type !== 'checkbox') {
+                                checkbox.checked = !checkbox.checked;
+                                checkbox.dispatchEvent(new Event('change'));
+                            }
+                        });
+
+                        optionsContainer.appendChild(optionDiv);
+                    });
+                });
+        }
+
+        function setupDropdown() {
+            const regionTrigger = document.getElementById('sales-region-trigger');
+            const regionDropdown = document.getElementById('sales-region-dropdown');
+
+            regionTrigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                regionDropdown.classList.toggle('hidden');
+            });
+
+            window.addEventListener('click', (event) => {
+                if (!regionDropdown.contains(event.target) && !regionTrigger.contains(event.target)) {
+                    regionDropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        function updateRegionDisplayText() {
+            const checkedBoxes = document.querySelectorAll('#sales-region-options input[type="checkbox"]:checked');
+            const textElement = document.getElementById('sales-region-text');
+            
+            if (checkedBoxes.length === 0) {
+                textElement.textContent = 'Select Regions...';
+            } else if (checkedBoxes.length === 1) {
+                textElement.textContent = checkedBoxes[0].value;
+            } else {
+                textElement.textContent = `${checkedBoxes.length} regions selected`;
+            }
+        }
+
+        // --- DASHBOARD UPDATE LOGIC ---
+        function updateDashboard() {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            
+            // THE FIX IS HERE: Get all checked regions from the custom dropdown.
+            const checkedBoxes = document.querySelectorAll('#sales-region-options input[type="checkbox"]:checked');
+            const selectedRegions = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+            const salesRegionParam = selectedRegions.length > 0 ? selectedRegions.join(',') : 'All';
+            
+            showLoading('forecast-chart-container', 'Forecast by Region');
+            showLoading('bookings-chart-container', 'Bookings by Month');
+
+            const queryParams = `?start_date=${startDate}&end_date=${endDate}&sales_region=${salesRegionParam}`;
+
+            Promise.all([
+                fetch('/api/data/forecast' + queryParams).then(res => res.json()),
+                fetch('/api/data/bookings' + queryParams).then(res => res.json())
+            ]).then(([forecastData, bookingsData]) => {
+                renderForecastChart(forecastData);
+                renderBookingsChart(bookingsData);
+            }).catch(error => {
+                console.error('Error fetching dashboard data:', error);
+            });
+        }
+
+        function showLoading(containerId, title) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `
+                <div class="flex flex-col h-full justify-center items-center text-gray-400">
+                    <h3 class="text-lg font-semibold text-white mb-4">${title}</h3>
+                    <p>⏳ Loading Data...</p>
+                </div>
+            `;
+        }
+
+        // --- CHART RENDERING FUNCTIONS ---
+        function renderForecastChart(data) {
+            const container = document.getElementById('forecast-chart-container');
+            container.innerHTML = ''; 
+
+            if (!data || !data.regions || data.regions.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No forecast data available for the selected filters.</p>';
+                return;
+            }
+
+            const traces = [];
+            const color_map = {'Pipeline': 'rgba(147, 197, 253, 0.8)','Best Case': 'rgba(96, 165, 250, 0.8)','Commit': 'rgba(59, 130, 246, 0.8)','Closed': 'rgba(37, 99, 235, 0.8)'};
+
+            data.categories.forEach(category => {
+                traces.push({y: data.regions, x: data.bar_data[category], name: category, type: 'bar', orientation: 'h', marker: { color: color_map[category] }});
+            });
+            traces.push({y: data.line_data.regions, x: data.line_data.counts, name: 'Opportunity Count', type: 'scatter', mode: 'lines+markers', orientation: 'h', xaxis: 'x2', line: { color: 'rgba(251, 191, 36, 0.9)', width: 4 }, marker: { size: 8, color: 'rgba(251, 191, 36, 1)' }});
+
+            const layout = {
+                title: '<b>Opportunity Forecast</b>', 
+                barmode: 'group', 
+                legend: { 
+                    orientation: "h",
+                    yanchor: "bottom",
+                    y: -0.3,
+                    xanchor: "center",
+                    x: 0.5
+                }, 
+                template: 'plotly_dark', 
+                font: { family: "Inter, sans-serif", color: "white" }, 
+                paper_bgcolor: 'rgba(0,0,0,0)', 
+                plot_bgcolor: 'rgba(0,0,0,0)', 
+                margin: { l: 80, r: 20, t: 60, b: 80 },
+                yaxis: { title: 'Sales Region', autorange: 'reversed' }, 
+                xaxis: { title: 'Total Amount', tickprefix: '$' }, 
+                xaxis2: { title: 'Opportunity Count', overlaying: 'x', side: 'top', showgrid: false }
+            };
+            
+            const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d'] };
+            Plotly.newPlot(container, traces, layout, config);
+        }
+
+        function renderBookingsChart(data) {
+            const container = document.getElementById('bookings-chart-container');
+            container.innerHTML = '';
+
+            if (!data || !data.labels || data.labels.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No bookings data available for the selected filters.</p>';
+                return;
+            }
+            
+            const trace = {
+                x: data.labels,
+                y: data.amounts,
+                type: 'bar',
+                marker: { color: '#0095D5' } 
+            };
+
+            const layout = {
+                title: '<b>Bookings by Month</b>',
+                template: 'plotly_dark',
+                font: { family: "Inter, sans-serif", color: "white" },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 80, r: 20, t: 60, b: 50 },
+                yaxis: { title: 'Booking Amount', tickprefix: '$' },
+                xaxis: { title: 'Month' }
+            };
+            
+            const config = {
+                responsive: true,
+                displaylogo: false,
+                modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            };
+
+            Plotly.newPlot(container, [trace], layout, config);
+        }
+    </script>
+</body>
+</html>
+
