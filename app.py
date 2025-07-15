@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from simple_salesforce import Salesforce
 import plotly.graph_objects as go
+from datetime import datetime
 
 # --- SETUP AND CONFIGURATION ---
 load_dotenv()
@@ -106,8 +107,6 @@ def get_bookings_data(start_date, end_date, sales_region):
         ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
     """
     
-    print(f"🔍 Running Bookings Query: {soql_query}")
-
     try:
         query_result = sf_connection.query_all(soql_query)
         df = pd.DataFrame(query_result['records'])
@@ -185,7 +184,7 @@ def get_booked_revenue_data(start_date, end_date, sales_region):
     booking_products = "('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex')"
     
     where_clauses = [
-        "IsWon = True", # Same as StageName = 'Closed Won'
+        "IsWon = True",
         f"Primary_Product__c IN {booking_products}"
     ]
     if start_date:
@@ -203,8 +202,6 @@ def get_booked_revenue_data(start_date, end_date, sales_region):
         WHERE {' AND '.join(where_clauses)}
     """
     
-    print(f"🔍 Running Booked Revenue Query: {soql_query}")
-
     try:
         result = sf_connection.query(soql_query)
         booked_revenue = result['records'][0]['expr0'] or 0
@@ -214,6 +211,112 @@ def get_booked_revenue_data(start_date, end_date, sales_region):
 
     return {'booked_revenue': booked_revenue}
 
+def get_sdr_email_data(start_date, end_date):
+    """ Fetches and transforms SDR email data by month. """
+    if not sf_connection: return {}
+
+    sdr_names = "('Sheen Trisal', 'Brandon Mazikowski', 'Hayden Barcelos', 'Jaylen Macias-Matsuura')"
+    
+    where_clauses = [
+        f"Owner.Name IN {sdr_names}",
+        "Subject LIKE '%Gong%'",
+        "Type = 'Email'",
+        f"ActivityDate <= {datetime.now().strftime('%Y-%m-%d')}"
+    ]
+    
+    effective_start_date = start_date if start_date else f"{datetime.now().year}-01-01"
+    where_clauses.append(f"ActivityDate >= {effective_start_date}")
+    if end_date:
+        where_clauses.append(f"ActivityDate <= {end_date}")
+
+    soql_query = f"""
+        SELECT Owner.Name, ActivityDate
+        FROM Task
+        WHERE {' AND '.join(where_clauses)}
+    """
+    
+    try:
+        query_result = sf_connection.query_all(soql_query)
+        records = []
+        for rec in query_result['records']:
+            records.append({
+                'ownerName': rec['Owner']['Name'],
+                'ActivityDate': rec['ActivityDate']
+            })
+        df = pd.DataFrame(records)
+    except Exception as e:
+        print(f"❌ SDR Email Query Error: {e}")
+        return {}
+        
+    if df.empty: return {}
+
+    df['ActivityDate'] = pd.to_datetime(df['ActivityDate'])
+    df['label'] = df['ActivityDate'].dt.strftime('%Y-%m') 
+    
+    grouped_df = df.groupby(['label', 'ownerName']).size().reset_index(name='emailCount')
+
+    pivot_df = grouped_df.pivot_table(index='label', columns='ownerName', values='emailCount', aggfunc='sum').fillna(0)
+    
+    pivot_df.index = pd.to_datetime(pivot_df.index, format='%Y-%m').strftime('%b %Y')
+
+    return {
+        'labels': pivot_df.index.tolist(),
+        'sdr_data': {col: pivot_df[col].tolist() for col in pivot_df.columns},
+        'sdr_names': pivot_df.columns.tolist()
+    }
+
+def get_sdr_call_data(start_date, end_date):
+    """ Fetches and transforms SDR call data by month. """
+    if not sf_connection: return {}
+
+    sdr_names = "('Sheen Trisal', 'Brandon Mazikowski', 'Hayden Barcelos', 'Jaylen Macias-Matsuura')"
+    
+    where_clauses = [
+        f"Owner.Name IN {sdr_names}",
+        "Type = 'Call'",
+        f"ActivityDate <= {datetime.now().strftime('%Y-%m-%d')}"
+    ]
+    
+    effective_start_date = start_date if start_date else f"{datetime.now().year}-01-01"
+    where_clauses.append(f"ActivityDate >= {effective_start_date}")
+    if end_date:
+        where_clauses.append(f"ActivityDate <= {end_date}")
+
+    soql_query = f"""
+        SELECT Owner.Name, ActivityDate
+        FROM Task
+        WHERE {' AND '.join(where_clauses)}
+    """
+    
+    try:
+        query_result = sf_connection.query_all(soql_query)
+        records = []
+        for rec in query_result['records']:
+            records.append({
+                'ownerName': rec['Owner']['Name'],
+                'ActivityDate': rec['ActivityDate']
+            })
+        df = pd.DataFrame(records)
+    except Exception as e:
+        print(f"❌ SDR Call Query Error: {e}")
+        return {}
+        
+    if df.empty: return {}
+
+    df['ActivityDate'] = pd.to_datetime(df['ActivityDate'])
+    df['label'] = df['ActivityDate'].dt.strftime('%Y-%m') 
+    
+    grouped_df = df.groupby(['label', 'ownerName']).size().reset_index(name='callCount')
+
+    pivot_df = grouped_df.pivot_table(index='label', columns='ownerName', values='callCount', aggfunc='sum').fillna(0)
+    
+    pivot_df.index = pd.to_datetime(pivot_df.index, format='%Y-%m').strftime('%b %Y')
+
+    return {
+        'labels': pivot_df.index.tolist(),
+        'sdr_data': {col: pivot_df[col].tolist() for col in pivot_df.columns},
+        'sdr_names': pivot_df.columns.tolist()
+    }
 
 def get_sales_regions():
     """ Fetches a unique list of sales regions to populate the filter dropdown. """
@@ -260,6 +363,20 @@ def booked_revenue_endpoint():
     data = get_booked_revenue_data(start_date, end_date, sales_region)
     return jsonify(data)
 
+@app.route('/api/data/sdr-emails')
+def sdr_emails_endpoint():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    data = get_sdr_email_data(start_date, end_date)
+    return jsonify(data)
+
+@app.route('/api/data/sdr-calls')
+def sdr_calls_endpoint():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    data = get_sdr_call_data(start_date, end_date)
+    return jsonify(data)
+
 @app.route('/api/filters/sales-regions')
 def sales_regions_endpoint():
     regions = get_sales_regions()
@@ -272,3 +389,5 @@ def dashboard_page():
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+
+
