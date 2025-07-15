@@ -39,15 +39,13 @@ def get_forecast_data(start_date, end_date, sales_region):
     if end_date:
         where_clauses.append(f"CloseDate <= {end_date}")
     
-    # THE FIX IS HERE: Handle a comma-separated list of regions for an IN clause.
     if sales_region and sales_region != 'All':
         regions_list = sales_region.split(',')
-        # Properly format for a SOQL IN clause: ('Region1','Region2',...)
         formatted_regions = "','".join(regions_list)
         where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
     
     soql_query = f"""
-        SELECT Amount, Sales_Region__c, ForecastCategoryName
+        SELECT Amount, Sales_Region__c, ForecastCategoryName, StageName
         FROM Opportunity
         WHERE {' AND '.join(where_clauses)}
     """
@@ -61,6 +59,8 @@ def get_forecast_data(start_date, end_date, sales_region):
 
     if df.empty: return {}
         
+    df = df[df['StageName'] != 'Closed Lost']
+
     df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
     pivot_df = df.groupby(['Sales_Region__c', 'ForecastCategoryName'])['Amount'].sum().unstack(fill_value=0)
     region_summary = df.groupby('Sales_Region__c').agg(Opp_Count=('Amount', 'count'), Total_Amount=('Amount', 'sum'))
@@ -93,7 +93,6 @@ def get_bookings_data(start_date, end_date, sales_region):
     if end_date:
         where_clauses.append(f"CloseDate <= {end_date}")
         
-    # THE FIX IS HERE: Handle a comma-separated list of regions for an IN clause.
     if sales_region and sales_region != 'All':
         regions_list = sales_region.split(',')
         formatted_regions = "','".join(regions_list)
@@ -107,6 +106,8 @@ def get_bookings_data(start_date, end_date, sales_region):
         ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)
     """
     
+    print(f"🔍 Running Bookings Query: {soql_query}")
+
     try:
         query_result = sf_connection.query_all(soql_query)
         df = pd.DataFrame(query_result['records'])
@@ -124,6 +125,95 @@ def get_bookings_data(start_date, end_date, sales_region):
         'labels': df['label'].tolist(),
         'amounts': df['totalAmount'].tolist()
     }
+
+def get_goal_data(start_date, end_date, sales_region):
+    """ Calculates the % to Goal based on filters. """
+    if not sf_connection: return {}
+
+    booking_products = "('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex')"
+    
+    shared_where = []
+    if start_date:
+        shared_where.append(f"CloseDate >= {start_date}")
+    if end_date:
+        shared_where.append(f"CloseDate <= {end_date}")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        shared_where.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    
+    shared_where_string = f"WHERE {' AND '.join(shared_where)}" if shared_where else ""
+
+    numerator_query = f"""
+        SELECT SUM(Amount)
+        FROM Opportunity
+        {shared_where_string}
+        {'AND' if shared_where else 'WHERE'} StageName = 'Closed Won'
+        AND Primary_Product__c IN {booking_products}
+    """
+    
+    denominator_query = f"""
+        SELECT SUM(Amount_Goal__c)
+        FROM Opportunity
+        {shared_where_string}
+        {'AND' if shared_where else 'WHERE'} RecordType.Name = 'Quota'
+        AND StageName = 'Quota'
+    """
+    
+    try:
+        numerator_result = sf_connection.query(numerator_query)
+        denominator_result = sf_connection.query(denominator_query)
+        
+        numerator = numerator_result['records'][0]['expr0'] or 0
+        denominator = denominator_result['records'][0]['expr0'] or 0
+        
+        if denominator == 0:
+            percentage = 0
+        else:
+            percentage = (numerator / denominator) * 100
+            
+    except Exception as e:
+        print(f"❌ Goal Query Error: {e}")
+        return {'percentage': 0}
+
+    return {'percentage': round(percentage, 2)}
+
+def get_booked_revenue_data(start_date, end_date, sales_region):
+    """ Calculates total booked revenue for specific products based on filters. """
+    if not sf_connection: return {}
+
+    booking_products = "('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex')"
+    
+    where_clauses = [
+        "IsWon = True", # Same as StageName = 'Closed Won'
+        f"Primary_Product__c IN {booking_products}"
+    ]
+    if start_date:
+        where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date:
+        where_clauses.append(f"CloseDate <= {end_date}")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    
+    soql_query = f"""
+        SELECT SUM(Amount)
+        FROM Opportunity
+        WHERE {' AND '.join(where_clauses)}
+    """
+    
+    print(f"🔍 Running Booked Revenue Query: {soql_query}")
+
+    try:
+        result = sf_connection.query(soql_query)
+        booked_revenue = result['records'][0]['expr0'] or 0
+    except Exception as e:
+        print(f"❌ Booked Revenue Query Error: {e}")
+        return {'booked_revenue': 0}
+
+    return {'booked_revenue': booked_revenue}
+
 
 def get_sales_regions():
     """ Fetches a unique list of sales regions to populate the filter dropdown. """
@@ -154,6 +244,22 @@ def bookings_data_endpoint():
     data = get_bookings_data(start_date, end_date, sales_region)
     return jsonify(data)
 
+@app.route('/api/data/goal')
+def goal_data_endpoint():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    sales_region = request.args.get('sales_region')
+    data = get_goal_data(start_date, end_date, sales_region)
+    return jsonify(data)
+
+@app.route('/api/data/booked-revenue')
+def booked_revenue_endpoint():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    sales_region = request.args.get('sales_region')
+    data = get_booked_revenue_data(start_date, end_date, sales_region)
+    return jsonify(data)
+
 @app.route('/api/filters/sales-regions')
 def sales_regions_endpoint():
     regions = get_sales_regions()
@@ -166,4 +272,3 @@ def dashboard_page():
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
