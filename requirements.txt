@@ -4,3 +4,4 @@ simple-salesforce
 pandas
 plotly
 gunicorn
+scikit-learn
