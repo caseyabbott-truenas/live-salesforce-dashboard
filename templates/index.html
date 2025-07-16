@@ -32,6 +32,9 @@
                 <div id="sdr-tab" class="tab" data-target="sdr-dashboard">
                     SDR Metrics
                 </div>
+                <div id="ml-tab" class="tab" data-target="ml-dashboard">
+                    Opportunity ML
+                </div>
             </nav>
         </aside>
 
@@ -43,7 +46,7 @@
             </header>
 
             <!-- Filters Section -->
-            <div class="card mb-6">
+            <div id="filters-container" class="card mb-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
                         <label for="start-date" class="filter-label">Start Date</label>
@@ -69,66 +72,58 @@
 
             <!-- Tab Content Panels -->
             <div id="kpi-dashboard" class="tab-content active">
-                <!-- KPI Cards Section -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div class="card">
-                        <h3 class="text-gray-400 text-sm font-medium">Booked Revenue</h3>
-                        <p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p>
-                    </div>
-                    <div class="card">
-                        <h3 class="text-gray-400 text-sm font-medium">% to Goal</h3>
-                        <p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p>
-                    </div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">% to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
                 </div>
-                <!-- Charts Section -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="card">
-                        <div id="forecast-chart-container" class="chart-container" style="height: 600px;"></div>
-                    </div>
-                    <div class="card">
-                         <div id="bookings-chart-container" class="chart-container" style="height: 600px;"></div>
-                    </div>
+                    <div class="card"><div id="forecast-chart-container" style="height: 600px;"></div></div>
+                    <div class="card"><div id="bookings-chart-container" style="height: 600px;"></div></div>
                 </div>
             </div>
 
             <div id="sdr-dashboard" class="tab-content">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="card">
-                        <div id="sdr-email-chart-container" class="chart-container" style="height: 500px;"></div>
-                    </div>
-                    <div class="card">
-                        <div id="sdr-call-chart-container" class="chart-container" style="height: 500px;"></div>
-                    </div>
+                    <div class="card"><div id="sdr-email-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><div id="sdr-call-chart-container" style="height: 500px;"></div></div>
                 </div>
+            </div>
+
+            <div id="ml-dashboard" class="tab-content">
+                <div id="ml-results-container"></div>
             </div>
         </main>
     </div>
 
     <script>
-        // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', function() {
             setDefaultDates();
             populateRegionFilter();
             setupDropdown();
             setupTabs();
-            
             document.getElementById('apply-filters').addEventListener('click', updateDashboard);
-            
             updateDashboard();
         });
 
         function setupTabs() {
             const tabs = document.querySelectorAll('.tab');
             const tabContents = document.querySelectorAll('.tab-content');
+            const filtersContainer = document.getElementById('filters-container');
 
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
                     tabs.forEach(t => t.classList.remove('active'));
                     tabContents.forEach(c => c.classList.remove('active'));
-
                     tab.classList.add('active');
                     const targetId = tab.getAttribute('data-target');
                     document.getElementById(targetId).classList.add('active');
+                    
+                    if (targetId === 'ml-dashboard') {
+                        filtersContainer.style.display = 'none';
+                        updateMlDashboard();
+                    } else {
+                        filtersContainer.style.display = 'block';
+                    }
                 });
             });
         }
@@ -138,74 +133,58 @@
             const startDateEl = document.getElementById('start-date');
             const today = new Date();
             const startOfYear = new Date(today.getFullYear(), 0, 1);
-
             endDateEl.value = today.toISOString().split('T')[0];
             startDateEl.value = startOfYear.toISOString().split('T')[0];
         }
 
         function populateRegionFilter() {
             const optionsContainer = document.getElementById('sales-region-options');
-            fetch('/api/filters/sales-regions')
-                .then(response => response.json())
-                .then(regions => {
-                    regions.forEach(region => {
-                        const optionDiv = document.createElement('div');
-                        optionDiv.classList.add('flex', 'items-center', 'p-2', 'rounded', 'hover:bg-gray-600', 'cursor-pointer');
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.id = `region-${region.replace(/\s+/g, '-')}`;
-                        checkbox.value = region;
-                        checkbox.classList.add('h-4', 'w-4', 'bg-gray-600', 'border-gray-500', 'text-blue-500', 'focus:ring-blue-500', 'cursor-pointer');
-                        const label = document.createElement('label');
-                        label.htmlFor = checkbox.id;
-                        label.textContent = region;
-                        label.classList.add('ml-2', 'text-sm', 'text-gray-200', 'cursor-pointer', 'flex-grow');
-                        optionDiv.appendChild(checkbox);
-                        optionDiv.appendChild(label);
-                        checkbox.addEventListener('change', updateRegionDisplayText);
-                        optionDiv.addEventListener('click', (e) => {
-                            if (e.target.type !== 'checkbox') {
-                                checkbox.checked = !checkbox.checked;
-                                checkbox.dispatchEvent(new Event('change'));
-                            }
-                        });
-                        optionsContainer.appendChild(optionDiv);
+            fetch('/api/filters/sales-regions').then(res => res.json()).then(regions => {
+                regions.forEach(region => {
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'flex items-center p-2 rounded hover:bg-gray-600 cursor-pointer';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `region-${region.replace(/\s+/g, '-')}`;
+                    checkbox.value = region;
+                    checkbox.className = 'h-4 w-4 bg-gray-600 border-gray-500 text-blue-500 focus:ring-blue-500 cursor-pointer';
+                    const label = document.createElement('label');
+                    label.htmlFor = checkbox.id;
+                    label.textContent = region;
+                    label.className = 'ml-2 text-sm text-gray-200 cursor-pointer flex-grow';
+                    optionDiv.append(checkbox, label);
+                    checkbox.addEventListener('change', updateRegionDisplayText);
+                    optionDiv.addEventListener('click', (e) => {
+                        if (e.target.type !== 'checkbox') {
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change'));
+                        }
                     });
+                    optionsContainer.appendChild(optionDiv);
                 });
+            });
         }
 
         function setupDropdown() {
-            const regionTrigger = document.getElementById('sales-region-trigger');
-            const regionDropdown = document.getElementById('sales-region-dropdown');
-            regionTrigger.addEventListener('click', (event) => {
-                event.stopPropagation();
-                regionDropdown.classList.toggle('hidden');
-            });
-            window.addEventListener('click', (event) => {
-                if (!regionDropdown.contains(event.target) && !regionTrigger.contains(event.target)) {
-                    regionDropdown.classList.add('hidden');
-                }
-            });
+            const trigger = document.getElementById('sales-region-trigger');
+            const dropdown = document.getElementById('sales-region-dropdown');
+            trigger.addEventListener('click', (e) => { e.stopPropagation(); dropdown.classList.toggle('hidden'); });
+            window.addEventListener('click', (e) => { if (!dropdown.contains(e.target) && !trigger.contains(e.target)) dropdown.classList.add('hidden'); });
         }
 
         function updateRegionDisplayText() {
-            const checkedBoxes = document.querySelectorAll('#sales-region-options input[type="checkbox"]:checked');
-            const textElement = document.getElementById('sales-region-text');
-            if (checkedBoxes.length === 0) {
-                textElement.textContent = 'Select Regions...';
-            } else if (checkedBoxes.length === 1) {
-                textElement.textContent = checkedBoxes[0].value;
-            } else {
-                textElement.textContent = `${checkedBoxes.length} regions selected`;
-            }
+            const checkedBoxes = document.querySelectorAll('#sales-region-options input:checked');
+            const textEl = document.getElementById('sales-region-text');
+            if (checkedBoxes.length === 0) textEl.textContent = 'Select Regions...';
+            else if (checkedBoxes.length === 1) textEl.textContent = checkedBoxes[0].value;
+            else textEl.textContent = `${checkedBoxes.length} regions selected`;
         }
 
-        // --- DASHBOARD UPDATE LOGIC ---
         function updateDashboard() {
             const startDate = document.getElementById('start-date').value;
             const endDate = document.getElementById('end-date').value;
-            const checkedBoxes = document.querySelectorAll('#sales-region-options input[type="checkbox"]:checked');
-            const selectedRegions = Array.from(checkedBoxes).map(checkbox => checkbox.value);
+            const checkedBoxes = document.querySelectorAll('#sales-region-options input:checked');
+            const selectedRegions = Array.from(checkedBoxes).map(cb => cb.value);
             const salesRegionParam = selectedRegions.length > 0 ? selectedRegions.join(',') : 'All';
             
             showLoading('forecast-chart-container', 'Forecast by Region');
@@ -229,114 +208,121 @@
                 renderBookingsChart(bookingsData);
                 renderGoalCard(goalData);
                 renderBookedRevenueCard(bookedRevenueData);
-                renderSdrEmailChart(sdrEmailData);
-                renderSdrCallChart(sdrCallData);
-            }).catch(error => {
-                console.error('Error fetching dashboard data:', error);
-            });
+                renderSdrActivityChart('sdr-email-chart-container', 'SDR [Gong] Emails by Month', 'Email Count', sdrEmailData);
+                renderSdrActivityChart('sdr-call-chart-container', 'SDR Calls by Month', 'Call Count', sdrCallData);
+            }).catch(error => console.error('Error fetching dashboard data:', error));
+        }
+        
+        function updateMlDashboard() {
+            const container = document.getElementById('ml-results-container');
+            container.innerHTML = `<div class="card text-center"><p class="text-lg">⏳ Training ML Model and Generating Predictions... This may take a moment.</p></div>`;
+            fetch('/api/data/ml-predictions')
+                .then(res => res.json())
+                .then(data => renderMlDashboard(data))
+                .catch(error => {
+                    console.error('Error fetching ML data:', error);
+                    container.innerHTML = `<div class="card text-center"><p class="text-red-500">❌ Failed to load ML predictions.</p></div>`;
+                });
         }
 
         function showLoading(containerId, title) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = `<div class="flex flex-col h-full justify-center items-center text-gray-400"><h3 class="text-lg font-semibold text-white mb-4">${title}</h3><p>⏳ Loading Data...</p></div>`;
+            document.getElementById(containerId).innerHTML = `<div class="flex flex-col h-full justify-center items-center text-gray-400"><h3 class="text-lg font-semibold text-white mb-4">${title}</h3><p>⏳ Loading Data...</p></div>`;
         }
 
-        // --- CHART & KPI RENDERING FUNCTIONS ---
         function renderBookedRevenueCard(data) {
             const kpiEl = document.getElementById('kpi-booked-revenue');
             if (data && typeof data.booked_revenue !== 'undefined') {
                 const value = data.booked_revenue;
-                let formattedValue;
-                if (value >= 1000000) {
-                    formattedValue = `$${(value / 1000000).toFixed(1)}M`;
-                } else if (value >= 1000) {
-                    formattedValue = `$${(value / 1000).toFixed(0)}K`;
-                } else {
-                    formattedValue = `$${value}`;
-                }
-                kpiEl.textContent = formattedValue;
-            } else {
-                kpiEl.textContent = 'N/A';
-            }
+                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
+            } else kpiEl.textContent = 'N/A';
         }
 
         function renderGoalCard(data) {
             const kpiEl = document.getElementById('kpi-goal');
-            if (data && typeof data.percentage !== 'undefined') {
-                kpiEl.textContent = `${data.percentage}%`;
-            } else {
-                kpiEl.textContent = 'N/A';
-            }
+            if (data && typeof data.percentage !== 'undefined') kpiEl.textContent = `${data.percentage}%`;
+            else kpiEl.textContent = 'N/A';
         }
 
         function renderForecastChart(data) {
             const container = document.getElementById('forecast-chart-container');
             container.innerHTML = ''; 
             if (!data || !data.regions || data.regions.length === 0) {
-                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No forecast data available for the selected filters.</p>';
-                return;
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No forecast data available.</p>'; return;
             }
             const traces = [];
             const color_map = {'Pipeline': 'rgba(147, 197, 253, 0.8)','Best Case': 'rgba(96, 165, 250, 0.8)','Commit': 'rgba(59, 130, 246, 0.8)','Closed': 'rgba(37, 99, 235, 0.8)'};
-            data.categories.forEach(category => {
-                traces.push({y: data.regions, x: data.bar_data[category], name: category, type: 'bar', orientation: 'h', marker: { color: color_map[category] }});
+            data.categories.forEach(cat => {
+                traces.push({y: data.regions, x: data.bar_data[cat], name: cat, type: 'bar', orientation: 'h', marker: {color: color_map[cat]}, text: data.bar_data[cat].map(v => v > 0 ? `${(v/1000).toFixed(0)}k` : ''), textposition: 'inside', insidetextanchor: 'middle', textfont: {color: 'white', weight: 'bold', size: 16}});
             });
-            traces.push({y: data.line_data.regions, x: data.line_data.counts, name: 'Opportunity Count', type: 'scatter', mode: 'lines+markers', orientation: 'h', xaxis: 'x2', line: { color: 'rgba(251, 191, 36, 0.9)', width: 4 }, marker: { size: 8, color: 'rgba(251, 191, 36, 1)' }});
-            const layout = {title: '<b>Opportunity Forecast</b>', barmode: 'group', legend: { orientation: "h", yanchor: "bottom", y: -0.3, xanchor: "center", x: 0.5 }, template: 'plotly_dark', font: { family: "Inter, sans-serif", color: "white" }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: { l: 80, r: 20, t: 60, b: 80 }, yaxis: { title: 'Sales Region', autorange: 'reversed' }, xaxis: { title: 'Total Amount', tickprefix: '$' }, xaxis2: { title: 'Opportunity Count', overlaying: 'x', side: 'top', showgrid: false }};
-            const config = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d'] };
-            Plotly.newPlot(container, traces, layout, config);
+            traces.push({y: data.line_data.regions, x: data.line_data.counts, name: 'Opp Count', type: 'scatter', mode: 'lines+markers', orientation: 'h', xaxis: 'x2', line: {color: 'rgba(251, 191, 36, 0.9)', width: 4}, marker: {size: 8, color: 'rgba(251, 191, 36, 1)'}});
+            const layout = {title: '<b>Opportunity Forecast</b>', barmode: 'group', legend: {orientation: "h", y: -0.3, x: 0.5, xanchor: "center", yanchor: "bottom"}, template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 80}, yaxis: {title: 'Sales Region', autorange: 'reversed'}, xaxis: {title: 'Total Amount', tickprefix: '$'}, xaxis2: {title: 'Opp Count', overlaying: 'x', side: 'top', showgrid: false}};
+            Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d']});
         }
 
         function renderBookingsChart(data) {
             const container = document.getElementById('bookings-chart-container');
             container.innerHTML = '';
             if (!data || !data.labels || data.labels.length === 0) {
-                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No bookings data available for the selected filters.</p>';
-                return;
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No bookings data available.</p>'; return;
             }
-            const trace = {x: data.labels, y: data.amounts, type: 'bar', marker: { color: '#0095D5' } };
-            const layout = {title: '<b>Bookings by Month</b>', template: 'plotly_dark', font: { family: "Inter, sans-serif", color: "white" }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: { l: 80, r: 20, t: 60, b: 50 }, yaxis: { title: 'Booking Amount', tickprefix: '$' }, xaxis: { title: 'Month' }};
-            const config = {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']};
-            Plotly.newPlot(container, [trace], layout, config);
+            const trace = {x: data.labels, y: data.amounts, type: 'bar', marker: {color: '#0095D5'}, texttemplate: '%{y:$,.2s}', textposition: 'outside', textfont: {color: '#a0aec0', size: 16}};
+            const layout = {title: '<b>Bookings by Month</b>', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 50}, yaxis: {title: 'Booking Amount', tickprefix: '$'}, xaxis: {title: 'Month'}};
+            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']});
         }
 
-        function renderSdrEmailChart(data) {
-            const container = document.getElementById('sdr-email-chart-container');
+        function renderSdrActivityChart(containerId, title, yAxisTitle, data) {
+            const container = document.getElementById(containerId);
             container.innerHTML = '';
             if (!data || !data.labels || data.labels.length === 0) {
-                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No SDR email data available for the selected filters.</p>';
-                return;
+                container.innerHTML = `<p class="text-center h-full flex items-center justify-center text-gray-400">No data available for ${title}.</p>`; return;
             }
-            // THE FIX IS HERE: New, more distinct shades of blue
             const sdrColors = ['#2C5282', '#2B6CB0', '#4299E1', '#63B3ED'];
             const traces = [];
             data.sdr_names.forEach((name, index) => {
-                traces.push({x: data.labels, y: data.sdr_data[name], name: name, type: 'bar', marker: { color: sdrColors[index % sdrColors.length] }});
+                traces.push({x: data.labels, y: data.sdr_data[name], name: name, type: 'bar', marker: {color: sdrColors[index % sdrColors.length]}, text: data.sdr_data[name].map(v => v > 0 ? v : ''), textposition: 'inside', insidetextanchor: 'middle', textfont: {color: 'white', weight: 'bold', size: 16}});
             });
-            const layout = {title: '<b>SDR [Gong] Emails by Month</b>', barmode: 'group', template: 'plotly_dark', font: { family: "Inter, sans-serif", color: "white" }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: { l: 80, r: 20, t: 60, b: 50 }, yaxis: { title: 'Email Count' }, xaxis: { title: 'Month' }};
-            const config = {responsive: true, displaylogo: false};
-            Plotly.newPlot(container, traces, layout, config);
+            const layout = {title: `<b>${title}</b>`, barmode: 'group', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 50}, yaxis: {title: yAxisTitle}, xaxis: {title: 'Month'}};
+            Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false});
         }
-
-        function renderSdrCallChart(data) {
-            const container = document.getElementById('sdr-call-chart-container');
-            container.innerHTML = '';
-            if (!data || !data.labels || data.labels.length === 0) {
-                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No SDR call data available for the selected filters.</p>';
+        
+        function renderMlDashboard(data) {
+            const container = document.getElementById('ml-results-container');
+            if (data.error) {
+                container.innerHTML = `<div class="card text-center"><p class="text-red-500">❌ Error: ${data.error}</p></div>`;
                 return;
             }
-            // THE FIX IS HERE: New, more distinct shades of blue
-            const sdrColors = ['#2C5282', '#2B6CB0', '#4299E1', '#63B3ED'];
-            const traces = [];
-            data.sdr_names.forEach((name, index) => {
-                traces.push({x: data.labels, y: data.sdr_data[name], name: name, type: 'bar', marker: { color: sdrColors[index % sdrColors.length] }});
-            });
-            const layout = {title: '<b>SDR Calls by Month</b>', barmode: 'group', template: 'plotly_dark', font: { family: "Inter, sans-serif", color: "white" }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: { l: 80, r: 20, t: 60, b: 50 }, yaxis: { title: 'Call Count' }, xaxis: { title: 'Month' }};
-            const config = {responsive: true, displaylogo: false};
-            Plotly.newPlot(container, traces, layout, config);
+            
+            let reportHtml = '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">';
+            
+            reportHtml += `<div class="card"><h3 class="text-lg font-semibold mb-2">Model Accuracy</h3><p class="text-4xl font-bold text-cyan-400">${(data.test_accuracy * 100).toFixed(2)}%</p><p class="text-sm text-gray-400 mt-1">on Test Data</p></div>`;
+
+            // THE FIX IS HERE: Safely build the classification report table
+            reportHtml += `<div class="card"><h3 class="text-lg font-semibold mb-2">Classification Report</h3><table class="w-full text-left text-sm"><thead><tr class="border-b border-gray-600"><th class="p-2">Class</th><th class="p-2">Precision</th><th class="p-2">Recall</th><th class="p-2">F1-Score</th><th class="p-2">Support</th></tr></thead><tbody>`;
+            const report = data.classification_report;
+            // Check for both string and boolean keys to be safe
+            const falseKey = report.hasOwnProperty('false') ? 'false' : 'False';
+            const trueKey = report.hasOwnProperty('true') ? 'true' : 'True';
+
+            if (report[falseKey]) {
+                reportHtml += `<tr><td class="p-2">Lost (False)</td><td class="p-2">${report[falseKey].precision.toFixed(2)}</td><td class="p-2">${report[falseKey].recall.toFixed(2)}</td><td class="p-2">${report[falseKey]['f1-score'].toFixed(2)}</td><td class="p-2">${report[falseKey].support}</td></tr>`;
+            }
+            if (report[trueKey]) {
+                reportHtml += `<tr class="border-t border-gray-700"><td class="p-2">Won (True)</td><td class="p-2">${report[trueKey].precision.toFixed(2)}</td><td class="p-2">${report[trueKey].recall.toFixed(2)}</td><td class="p-2">${report[trueKey]['f1-score'].toFixed(2)}</td><td class="p-2">${report[trueKey].support}</td></tr>`;
+            }
+            reportHtml += `</tbody></table></div>`;
+            
+            const features = data.feature_importances.map(f => f.Feature.replace(/__/g, ' ')).reverse();
+            const importances = data.feature_importances.map(f => f.Importance).reverse();
+            reportHtml += `<div class="card col-span-1 md:col-span-2"><div id="feature-importance-chart" style="height: 800px;"></div></div>`;
+
+            reportHtml += '</div>';
+            container.innerHTML = reportHtml;
+
+            const chartData = [{ y: features, x: importances, type: 'bar', orientation: 'h', marker: { color: '#4299E1' } }];
+            const layout = { title: '<b>Top 30 Feature Importances</b>', template: 'plotly_dark', font: { family: "Inter, sans-serif", color: "white" }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: { l: 300, r: 20, t: 60, b: 50 }, xaxis: { title: 'Importance Score' } };
+            Plotly.newPlot('feature-importance-chart', chartData, layout, {responsive: true, displaylogo: false});
         }
     </script>
 </body>
 </html>
-
 
