@@ -41,10 +41,6 @@ except Exception as e:
 
 # --- HELPER FUNCTION FOR JSON SERIALIZATION ---
 def convert_numpy_types(obj):
-    """
-    Recursively converts numpy number types in a dictionary or list
-    to standard Python types to ensure they are JSON serializable.
-    """
     if isinstance(obj, dict):
         return {k: convert_numpy_types(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -99,7 +95,7 @@ def get_bookings_data(start_date, end_date, sales_region):
         regions_list = sales_region.split(',')
         formatted_regions = "','".join(regions_list)
         where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
-    soql_query = f"SELECT CALENDAR_YEAR(CloseDate) c_year, CALENDAR_MONTH(CloseDate) c_month, SUM(Amount) totalAmount FROM Opportunity WHERE {' AND '.join(where_clauses)} GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate) ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)"
+    soql_query = f"SELECT CALENDAR_YEAR(CloseDate) c_year, CALENDAR_MONTH(CloseDate) c_month, Sales_Region__c, SUM(Amount) totalAmount FROM Opportunity WHERE {' AND '.join(where_clauses)} GROUP BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate), Sales_Region__c ORDER BY CALENDAR_YEAR(CloseDate), CALENDAR_MONTH(CloseDate)"
     try:
         query_result = sf_connection.query_all(soql_query)
         df = pd.DataFrame(query_result['records'])
@@ -108,7 +104,11 @@ def get_bookings_data(start_date, end_date, sales_region):
         return {}
     if df.empty: return {}
     df['label'] = pd.to_datetime(df['c_year'].astype(str) + '-' + df['c_month'].astype(str) + '-01').dt.strftime('%b %Y')
-    return {'labels': df['label'].tolist(), 'amounts': df['totalAmount'].tolist()}
+    pivot_df = df.pivot_table(index='label', columns='Sales_Region__c', values='totalAmount', aggfunc='sum').fillna(0)
+    pivot_df.index = pd.to_datetime(pivot_df.index, format='%b %Y')
+    pivot_df = pivot_df.sort_index()
+    pivot_df.index = pivot_df.index.strftime('%b %Y')
+    return {'labels': pivot_df.index.tolist(), 'region_data': {col: pivot_df[col].tolist() for col in pivot_df.columns}, 'regions': pivot_df.columns.tolist()}
 
 def get_goal_data(start_date, end_date, sales_region):
     if not sf_connection: return {}
@@ -153,11 +153,97 @@ def get_booked_revenue_data(start_date, end_date, sales_region):
         return {'booked_revenue': 0}
     return {'booked_revenue': booked_revenue}
 
+def get_new_storage_customers_data(start_date, end_date, sales_region):
+    if not sf_connection: return {}
+    storage_products = "('FreeNAS Cert', 'TrueNAS')"
+    where_clauses = ["StageName = 'Closed Won'", f"Primary_Product__c IN {storage_products}", "Type = 'New Business'"]
+    if start_date: where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date: where_clauses.append(f"CloseDate <= {end_date}")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    soql_query = f"SELECT COUNT(Id) FROM Opportunity WHERE {' AND '.join(where_clauses)}"
+    try:
+        result = sf_connection.query(soql_query)
+        customer_count = result['records'][0]['expr0'] or 0
+    except Exception as e:
+        print(f"❌ New Storage Customers Query Error: {e}")
+        return {'customer_count': 0}
+    return {'customer_count': customer_count}
+
+def get_repeat_storage_customers_data(start_date, end_date, sales_region):
+    if not sf_connection: return {}
+    storage_products = "('FreeNAS Cert', 'TrueNAS')"
+    where_clauses = ["StageName = 'Closed Won'", f"Primary_Product__c IN {storage_products}", "Type = 'Existing Business'"]
+    if start_date: where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date: where_clauses.append(f"CloseDate <= {end_date}")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    soql_query = f"SELECT COUNT(Id) FROM Opportunity WHERE {' AND '.join(where_clauses)}"
+    try:
+        result = sf_connection.query(soql_query)
+        customer_count = result['records'][0]['expr0'] or 0
+    except Exception as e:
+        print(f"❌ Repeat Storage Customers Query Error: {e}")
+        return {'customer_count': 0}
+    return {'customer_count': customer_count}
+
+def get_large_deals_data(sales_region, amount_threshold):
+    if not sf_connection: return {}
+    where_clauses = ["IsWon = True", "Primary_Product__c != 'Servers'", f"Amount >= {amount_threshold}", "CloseDate = THIS_FISCAL_QUARTER"]
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    soql_query = f"SELECT COUNT(Id) FROM Opportunity WHERE {' AND '.join(where_clauses)}"
+    try:
+        result = sf_connection.query(soql_query)
+        deal_count = result['records'][0]['expr0'] or 0
+    except Exception as e:
+        print(f"❌ Large Deals Query Error (Amount >= {amount_threshold}): {e}")
+        return {'deal_count': 0}
+    return {'deal_count': deal_count}
+
+def get_current_open_commit_data(start_date, end_date, sales_region):
+    """ Calculates the value of current open commit opportunities. """
+    if not sf_connection: return {}
+    
+    commit_products = "('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex')"
+    
+    where_clauses = [
+        "IsClosed = False",
+        "ForecastCategoryName = 'Commit'",
+        f"Primary_Product__c IN {commit_products}"
+    ]
+    if start_date:
+        where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date:
+        where_clauses.append(f"CloseDate <= {end_date}")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    
+    soql_query = f"SELECT SUM(Amount) FROM Opportunity WHERE {' AND '.join(where_clauses)}"
+    
+    try:
+        result = sf_connection.query(soql_query)
+        commit_amount = result['records'][0]['expr0'] or 0
+    except Exception as e:
+        print(f"❌ Current Open Commit Query Error: {e}")
+        return {'commit_amount': 0}
+
+    return {'commit_amount': commit_amount}
+
 def get_sdr_activity_data(start_date, end_date, activity_type):
     if not sf_connection: return {}
     sdr_names = "('Sheen Trisal', 'Brandon Mazikowski', 'Hayden Barcelos', 'Jaylen Macias-Matsuura')"
     where_clauses = [f"Owner.Name IN {sdr_names}", f"Type = '{activity_type}'", f"ActivityDate <= {datetime.now().strftime('%Y-%m-%d')}"]
     if activity_type == 'Email': where_clauses.append("Subject LIKE '%Gong%'")
+    if activity_type == 'Meeting': where_clauses.append("Owner.Name != 'IT Dept'")
     effective_start_date = start_date if start_date else f"{datetime.now().year}-01-01"
     where_clauses.append(f"ActivityDate >= {effective_start_date}")
     if end_date: where_clauses.append(f"ActivityDate <= {end_date}")
@@ -177,28 +263,69 @@ def get_sdr_activity_data(start_date, end_date, activity_type):
     pivot_df.index = pd.to_datetime(pivot_df.index, format='%Y-%m').strftime('%b %Y')
     return {'labels': pivot_df.index.tolist(), 'sdr_data': {col: pivot_df[col].tolist() for col in pivot_df.columns}, 'sdr_names': pivot_df.columns.tolist()}
 
-def get_ml_predictions():
+def get_sdr_generated_opps_chart_data(start_date, end_date, sales_region):
+    if not sf_connection: return {}
+    sdr_names = "('Sheen Trisal','Brandon Mazikowski','Hayden Barcelos','Jaylen Macias-Matsuura')"
+    stages = "('Qualification','Proposal','Negotiation','Expected','Closed Won','Cancelled','Closed Lost')"
+    where_clauses = [f"SDR_on_Opportunity__r.Name IN {sdr_names}", "Lead_Pipe__c = 'Outbound'", f"StageName IN {stages}"]
+    if start_date: where_clauses.append(f"CreatedDate >= {start_date}T00:00:00Z")
+    if end_date: where_clauses.append(f"CreatedDate <= {end_date}T23:59:59Z")
+    if sales_region and sales_region != 'All':
+        regions_list = sales_region.split(',')
+        formatted_regions = "','".join(regions_list)
+        where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
+    soql_query = f"SELECT SDR_on_Opportunity__r.Name sdrName, CALENDAR_YEAR(CreatedDate) c_year, CALENDAR_MONTH(CreatedDate) c_month, COUNT(Id) oppCount FROM Opportunity WHERE {' AND '.join(where_clauses)} GROUP BY SDR_on_Opportunity__r.Name, CALENDAR_YEAR(CreatedDate), CALENDAR_MONTH(CreatedDate) ORDER BY CALENDAR_YEAR(CreatedDate), CALENDAR_MONTH(CreatedDate)"
+    try:
+        query_result = sf_connection.query_all(soql_query)
+        records = [{'sdrName': rec['sdrName'], 'c_year': rec['c_year'], 'c_month': rec['c_month'], 'oppCount': rec['oppCount']} for rec in query_result['records']]
+        df = pd.DataFrame(records)
+    except Exception as e:
+        print(f"❌ SDR Generated Opps Chart Query Error: {e}")
+        return {}
+    if df.empty: return {}
+    df['label'] = pd.to_datetime(df['c_year'].astype(str) + '-' + df['c_month'].astype(str) + '-01').dt.strftime('%b %Y')
+    pivot_df = df.pivot_table(index='label', columns='sdrName', values='oppCount', aggfunc='sum').fillna(0)
+    pivot_df.index = pd.to_datetime(pivot_df.index, format='%b %Y')
+    pivot_df = pivot_df.sort_index()
+    pivot_df.index = pivot_df.index.strftime('%b %Y')
+    return {'labels': pivot_df.index.tolist(), 'sdr_data': {col: pivot_df[col].tolist() for col in pivot_df.columns}, 'sdr_names': pivot_df.columns.tolist()}
+
+def get_ml_predictions(months_lookback, opportunity_type):
     if not sf_connection: return {"error": "Salesforce connection not available."}
     
     TARGET_OBJECT_ML = 'Opportunity'
-    OPPORTUNITY_TYPE_FILTER = 'New Business'
     PRIMARY_PRODUCT_FILTER = 'TrueNAS'
-    MONTHS_LOOKBACK = 18
     TARGET_VARIABLE = 'IsWon'
     
-    features_to_select = ['Amount', 'LeadSource', 'Type', 'Sales_Region__c', 'CreatedDate', 'CloseDate', 'IsWon', 'IsClosed', 'StageName']
+    features_to_select = ['Amount', 'LeadSource', 'Type', 'Sales_Program__c', 'Sales_Region__c', 'CreatedDate', 'CloseDate', 'IsWon', 'IsClosed', 'StageName']
     
-    eighteen_months_ago_str = (datetime.now() - relativedelta(months=MONTHS_LOOKBACK)).strftime('%Y-%m-%d')
-    soql_ml_query = f"SELECT {', '.join(features_to_select)} FROM {TARGET_OBJECT_ML} WHERE Type = '{OPPORTUNITY_TYPE_FILTER}' AND Primary_Product__c = '{PRIMARY_PRODUCT_FILTER}' AND IsClosed = TRUE AND CloseDate >= {eighteen_months_ago_str}"
+    where_clauses_ml = ["IsClosed = TRUE", f"Primary_Product__c = '{PRIMARY_PRODUCT_FILTER}'"]
+    
+    if months_lookback:
+        try:
+            lookback_date_str = (datetime.now() - relativedelta(months=int(months_lookback))).strftime('%Y-%m-%d')
+            where_clauses_ml.append(f"CloseDate >= {lookback_date_str}")
+        except ValueError:
+            return {"error": "Invalid months lookback value."}
+
+    if opportunity_type:
+        if opportunity_type in ['New Business', 'Existing Business']:
+            where_clauses_ml.append(f"Type = '{opportunity_type}'")
+        elif opportunity_type == 'Support Renewals':
+            where_clauses_ml.append("Sales_Program__c = 'SUP/WRNY Renewal'")
+        elif opportunity_type == 'System Refresh':
+            where_clauses_ml.append("Sales_Program__c = 'System Refresh'")
+
+    soql_ml_query = f"SELECT {', '.join(features_to_select)} FROM {TARGET_OBJECT_ML} WHERE {' AND '.join(where_clauses_ml)}"
     
     try:
-        print("⏳ Fetching data for ML Model...")
+        print(f"⏳ Fetching data for ML Model with query: {soql_ml_query}")
         ml_records = sf_connection.query_all_iter(soql_ml_query)
         df_ml = pd.DataFrame(list(ml_records))
         if 'attributes' in df_ml.columns:
             df_ml = df_ml.drop(columns=['attributes'])
-        if df_ml.empty:
-            return {"error": "No opportunities found for ML model training."}
+        if df_ml.empty or len(df_ml) < 20:
+            return {"error": "Not enough opportunity data found for the selected filters to train a reliable model."}
         print(f"✅ Successfully fetched {len(df_ml)} opportunities for ML.")
     except Exception as e:
         return {"error": f"ML Data Fetch Error: {e}"}
@@ -222,6 +349,9 @@ def get_ml_predictions():
     X_processed = preprocessor.fit_transform(X)
     X_train, X_test, y_train, y_test = train_test_split(X_processed, y, test_size=0.25, random_state=42, stratify=y)
     
+    if len(np.unique(y_train)) < 2 or len(np.unique(y_test)) < 2:
+        return {"error": "The filtered data contains only one outcome (all Won or all Lost), so a predictive model cannot be trained."}
+
     rf_model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
     print("⏳ Training Random Forest model...")
     rf_model.fit(X_train, y_train)
@@ -234,7 +364,6 @@ def get_ml_predictions():
     feature_names = preprocessor.get_feature_names_out()
     
     feature_importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': importances})
-    # THE FIX IS HERE: Changed from .head(10) to .head(30) to show more features.
     feature_importance_df = feature_importance_df.sort_values(by='Importance', ascending=False).head(30)
     
     report_dict = classification_report(y_test, y_test_pred, output_dict=True, zero_division=0)
@@ -275,6 +404,30 @@ def goal_data_endpoint():
 def booked_revenue_endpoint():
     return jsonify(get_booked_revenue_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
+@app.route('/api/data/new-storage-customers')
+def new_storage_customers_endpoint():
+    return jsonify(get_new_storage_customers_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
+@app.route('/api/data/repeat-storage-customers')
+def repeat_storage_customers_endpoint():
+    return jsonify(get_repeat_storage_customers_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
+@app.route('/api/data/100k-deals')
+def deals_100k_endpoint():
+    return jsonify(get_large_deals_data(request.args.get('sales_region'), 100000))
+
+@app.route('/api/data/200k-deals')
+def deals_200k_endpoint():
+    return jsonify(get_large_deals_data(request.args.get('sales_region'), 200000))
+
+@app.route('/api/data/current-open-commit')
+def current_open_commit_endpoint():
+    return jsonify(get_current_open_commit_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
+@app.route('/api/data/sdr-generated-opps-chart')
+def sdr_generated_opps_chart_endpoint():
+    return jsonify(get_sdr_generated_opps_chart_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
 @app.route('/api/data/sdr-emails')
 def sdr_emails_endpoint():
     return jsonify(get_sdr_activity_data(request.args.get('start_date'), request.args.get('end_date'), 'Email'))
@@ -283,9 +436,15 @@ def sdr_emails_endpoint():
 def sdr_calls_endpoint():
     return jsonify(get_sdr_activity_data(request.args.get('start_date'), request.args.get('end_date'), 'Call'))
 
+@app.route('/api/data/sdr-meetings')
+def sdr_meetings_endpoint():
+    return jsonify(get_sdr_activity_data(request.args.get('start_date'), request.args.get('end_date'), 'Meeting'))
+
 @app.route('/api/data/ml-predictions')
 def ml_predictions_endpoint():
-    return jsonify(get_ml_predictions())
+    months_lookback = request.args.get('months_lookback', '18')
+    opp_type = request.args.get('opportunity_type', 'New Business')
+    return jsonify(get_ml_predictions(months_lookback, opp_type))
 
 @app.route('/api/filters/sales-regions')
 def sales_regions_endpoint():
@@ -298,4 +457,3 @@ def dashboard_page():
 # --- RUN THE APP ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-

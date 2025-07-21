@@ -19,9 +19,16 @@
         .tab-content.active { display: block; }
     </style>
 </head>
-<body class="text-white">
+<body class="text-white bg-gray-900">
 
-    <div class="flex h-screen">
+    <!-- New Top Header -->
+    <header class="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700 shadow-md">
+        <div class="text-4xl font-bold text-white">TrueNAS</div>
+        <div class="text-4xl font-semibold text-gray-300">RevOps</div>
+    </header>
+
+    <!-- Main Application Layout -->
+    <div class="flex" style="height: calc(100vh - 84px);">
         <!-- Left Sidebar for Navigation -->
         <aside class="w-64 bg-gray-900 p-6 space-y-4 border-r border-gray-700">
             <h2 class="text-lg font-semibold text-white">Dashboards</h2>
@@ -73,8 +80,13 @@
             <!-- Tab Content Panels -->
             <div id="kpi-dashboard" class="tab-content active">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">% to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">1. Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">2. TrueNAS >$100k</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">3. TrueNAS >$200k</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">4. % to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">5. New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">6. Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">7. Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div class="card"><div id="forecast-chart-container" style="height: 600px;"></div></div>
@@ -84,12 +96,37 @@
 
             <div id="sdr-dashboard" class="tab-content">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="card"><div id="sdr-generated-opps-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><div id="sdr-meeting-chart-container" class="chart-container" style="height: 500px;"></div></div>
                     <div class="card"><div id="sdr-email-chart-container" style="height: 500px;"></div></div>
                     <div class="card"><div id="sdr-call-chart-container" style="height: 500px;"></div></div>
                 </div>
             </div>
 
             <div id="ml-dashboard" class="tab-content">
+                <div class="card mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div>
+                            <label for="ml-months-lookback" class="filter-label">Data Lookback</label>
+                            <select id="ml-months-lookback" class="filter-input w-full mt-1">
+                                <option value="12">12 Months</option>
+                                <option value="18" selected>18 Months</option>
+                                <option value="24">24 Months</option>
+                                <option value="36">36 Months</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="ml-opp-type" class="filter-label">Opportunity Type</label>
+                            <select id="ml-opp-type" class="filter-input w-full mt-1">
+                                <option value="New Business" selected>New Business</option>
+                                <option value="Existing Business">Existing Business</option>
+                                <option value="Support Renewals">Support Renewals</option>
+                                <option value="System Refresh">System Refresh</option>
+                            </select>
+                        </div>
+                        <button id="apply-ml-filters" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg w-full md:w-auto">Train Model</button>
+                    </div>
+                </div>
                 <div id="ml-results-container"></div>
             </div>
         </main>
@@ -101,15 +138,15 @@
             populateRegionFilter();
             setupDropdown();
             setupTabs();
-            document.getElementById('apply-filters').addEventListener('click', updateDashboard);
-            updateDashboard();
+            document.getElementById('apply-filters').addEventListener('click', updateActiveDashboard);
+            document.getElementById('apply-ml-filters').addEventListener('click', updateMlDashboard);
+            updateKpiDashboard(); // Load the initial dashboard
         });
 
         function setupTabs() {
             const tabs = document.querySelectorAll('.tab');
             const tabContents = document.querySelectorAll('.tab-content');
             const filtersContainer = document.getElementById('filters-container');
-
             tabs.forEach(tab => {
                 tab.addEventListener('click', () => {
                     tabs.forEach(t => t.classList.remove('active'));
@@ -117,12 +154,14 @@
                     tab.classList.add('active');
                     const targetId = tab.getAttribute('data-target');
                     document.getElementById(targetId).classList.add('active');
-                    
                     if (targetId === 'ml-dashboard') {
                         filtersContainer.style.display = 'none';
-                        updateMlDashboard();
+                        if (!document.getElementById('ml-results-container').hasChildNodes()) {
+                             document.getElementById('ml-results-container').innerHTML = `<div class="card text-center"><p class="text-lg">Select model parameters and click "Train Model".</p></div>`;
+                        }
                     } else {
                         filtersContainer.style.display = 'block';
+                        updateActiveDashboard(); // Refresh data when switching to a new tab
                     }
                 });
             });
@@ -180,45 +219,87 @@
             else textEl.textContent = `${checkedBoxes.length} regions selected`;
         }
 
-        function updateDashboard() {
+        function getFilterParams() {
             const startDate = document.getElementById('start-date').value;
             const endDate = document.getElementById('end-date').value;
             const checkedBoxes = document.querySelectorAll('#sales-region-options input:checked');
             const selectedRegions = Array.from(checkedBoxes).map(cb => cb.value);
             const salesRegionParam = selectedRegions.length > 0 ? selectedRegions.join(',') : 'All';
-            
+            return `?start_date=${startDate}&end_date=${endDate}&sales_region=${salesRegionParam}`;
+        }
+
+        function updateActiveDashboard() {
+            const activeTab = document.querySelector('.tab.active');
+            const targetId = activeTab.getAttribute('data-target');
+            if (targetId === 'kpi-dashboard') {
+                updateKpiDashboard();
+            } else if (targetId === 'sdr-dashboard') {
+                updateSdrDashboard();
+            }
+        }
+
+        function updateKpiDashboard() {
+            const queryParams = getFilterParams();
             showLoading('forecast-chart-container', 'Forecast by Region');
             showLoading('bookings-chart-container', 'Bookings by Month');
-            showLoading('sdr-email-chart-container', 'SDR Emails by Month');
-            showLoading('sdr-call-chart-container', 'SDR Calls by Month');
             document.getElementById('kpi-goal').textContent = '...';
             document.getElementById('kpi-booked-revenue').textContent = '...';
-
-            const queryParams = `?start_date=${startDate}&end_date=${endDate}&sales_region=${salesRegionParam}`;
+            document.getElementById('kpi-new-storage-customers').textContent = '...';
+            document.getElementById('kpi-repeat-storage-customers').textContent = '...';
+            document.getElementById('kpi-100k-deals').textContent = '...';
+            document.getElementById('kpi-200k-deals').textContent = '...';
+            document.getElementById('kpi-open-commit').textContent = '...';
 
             Promise.all([
                 fetch('/api/data/forecast' + queryParams).then(res => res.json()),
                 fetch('/api/data/bookings' + queryParams).then(res => res.json()),
                 fetch('/api/data/goal' + queryParams).then(res => res.json()),
                 fetch('/api/data/booked-revenue' + queryParams).then(res => res.json()),
-                fetch('/api/data/sdr-emails' + queryParams).then(res => res.json()),
-                fetch('/api/data/sdr-calls' + queryParams).then(res => res.json())
-            ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, sdrEmailData, sdrCallData]) => {
+                fetch('/api/data/new-storage-customers' + queryParams).then(res => res.json()),
+                fetch('/api/data/repeat-storage-customers' + queryParams).then(res => res.json()),
+                fetch('/api/data/100k-deals' + queryParams).then(res => res.json()),
+                fetch('/api/data/200k-deals' + queryParams).then(res => res.json()),
+                fetch('/api/data/current-open-commit' + queryParams).then(res => res.json())
+            ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, newStorage, repeatStorage, deals100k, deals200k, openCommitData]) => {
                 renderForecastChart(forecastData);
                 renderBookingsChart(bookingsData);
                 renderGoalCard(goalData);
                 renderBookedRevenueCard(bookedRevenueData);
+                renderNewStorageCustomersCard(newStorage);
+                renderRepeatStorageCustomersCard(repeatStorage);
+                renderLargeDealsCard('kpi-100k-deals', deals100k);
+                renderLargeDealsCard('kpi-200k-deals', deals200k);
+                renderCurrentOpenCommitCard(openCommitData);
+            }).catch(error => console.error('Error fetching KPI data:', error));
+        }
+
+        function updateSdrDashboard() {
+            const queryParams = getFilterParams();
+            showLoading('sdr-email-chart-container', 'SDR Emails by Month');
+            showLoading('sdr-call-chart-container', 'SDR Calls by Month');
+            showLoading('sdr-meeting-chart-container', 'SDR Meetings by Month');
+            showLoading('sdr-generated-opps-chart-container', 'SDR Generated Opps by Month');
+
+            Promise.all([
+                fetch('/api/data/sdr-generated-opps-chart' + queryParams).then(res => res.json()),
+                fetch('/api/data/sdr-emails' + queryParams).then(res => res.json()),
+                fetch('/api/data/sdr-calls' + queryParams).then(res => res.json()),
+                fetch('/api/data/sdr-meetings' + queryParams).then(res => res.json())
+            ]).then(([sdrGeneratedOppsData, sdrEmailData, sdrCallData, sdrMeetingData]) => {
+                renderSdrActivityChart('sdr-generated-opps-chart-container', 'SDR Generated Opps by Month', 'Opp Count', sdrGeneratedOppsData);
                 renderSdrActivityChart('sdr-email-chart-container', 'SDR [Gong] Emails by Month', 'Email Count', sdrEmailData);
                 renderSdrActivityChart('sdr-call-chart-container', 'SDR Calls by Month', 'Call Count', sdrCallData);
-            }).catch(error => console.error('Error fetching dashboard data:', error));
+                renderSdrActivityChart('sdr-meeting-chart-container', 'SDR Meetings by Month', 'Meeting Count', sdrMeetingData);
+            }).catch(error => console.error('Error fetching SDR data:', error));
         }
         
         function updateMlDashboard() {
             const container = document.getElementById('ml-results-container');
-            container.innerHTML = `<div class="card text-center"><p class="text-lg">⏳ Training ML Model and Generating Predictions... This may take a moment.</p></div>`;
-            fetch('/api/data/ml-predictions')
-                .then(res => res.json())
-                .then(data => renderMlDashboard(data))
+            const months = document.getElementById('ml-months-lookback').value;
+            const oppType = document.getElementById('ml-opp-type').value;
+            container.innerHTML = `<div class="card text-center"><p class="text-lg">⏳ Training ML Model... This may take a moment.</p></div>`;
+            const queryParams = `?months_lookback=${months}&opportunity_type=${oppType}`;
+            fetch('/api/data/ml-predictions' + queryParams).then(res => res.json()).then(data => renderMlDashboard(data))
                 .catch(error => {
                     console.error('Error fetching ML data:', error);
                     container.innerHTML = `<div class="card text-center"><p class="text-red-500">❌ Failed to load ML predictions.</p></div>`;
@@ -243,6 +324,37 @@
             else kpiEl.textContent = 'N/A';
         }
 
+        function renderNewStorageCustomersCard(data) {
+            const kpiEl = document.getElementById('kpi-new-storage-customers');
+            if (data && typeof data.customer_count !== 'undefined') kpiEl.textContent = data.customer_count;
+            else kpiEl.textContent = 'N/A';
+        }
+        
+        function renderRepeatStorageCustomersCard(data) {
+            const kpiEl = document.getElementById('kpi-repeat-storage-customers');
+            if (data && typeof data.customer_count !== 'undefined') kpiEl.textContent = data.customer_count;
+            else kpiEl.textContent = 'N/A';
+        }
+
+        function renderLargeDealsCard(elementId, data) {
+            const kpiEl = document.getElementById(elementId);
+            if (data && typeof data.deal_count !== 'undefined') {
+                kpiEl.textContent = data.deal_count;
+            } else {
+                kpiEl.textContent = 'N/A';
+            }
+        }
+        
+        function renderCurrentOpenCommitCard(data) {
+            const kpiEl = document.getElementById('kpi-open-commit');
+            if (data && typeof data.commit_amount !== 'undefined') {
+                const value = data.commit_amount;
+                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
+            } else {
+                kpiEl.textContent = 'N/A';
+            }
+        }
+
         function renderForecastChart(data) {
             const container = document.getElementById('forecast-chart-container');
             container.innerHTML = ''; 
@@ -265,9 +377,31 @@
             if (!data || !data.labels || data.labels.length === 0) {
                 container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No bookings data available.</p>'; return;
             }
-            const trace = {x: data.labels, y: data.amounts, type: 'bar', marker: {color: '#0095D5'}, texttemplate: '%{y:$,.2s}', textposition: 'outside', textfont: {color: '#a0aec0', size: 16}};
-            const layout = {title: '<b>Bookings by Month</b>', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 50}, yaxis: {title: 'Booking Amount', tickprefix: '$'}, xaxis: {title: 'Month'}};
-            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']});
+            
+            const traces = [];
+            const regionColors = ['#0095D5', '#A0AEC0', '#4299E1', '#718096', '#2B6CB0', '#E2E8F0'];
+            data.regions.forEach((region, index) => {
+                traces.push({
+                    x: data.labels,
+                    y: data.region_data[region],
+                    name: region,
+                    type: 'bar',
+                    marker: { color: regionColors[index % regionColors.length] }
+                });
+            });
+
+            const layout = {
+                title: '<b>Bookings by Month</b>',
+                barmode: 'stack',
+                template: 'plotly_dark',
+                font: {family: "Inter, sans-serif", color: "white"},
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: {l: 80, r: 20, t: 60, b: 50},
+                yaxis: {title: 'Booking Amount', tickprefix: '$'},
+                xaxis: {title: 'Month'}
+            };
+            Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']});
         }
 
         function renderSdrActivityChart(containerId, title, yAxisTitle, data) {
@@ -296,10 +430,8 @@
             
             reportHtml += `<div class="card"><h3 class="text-lg font-semibold mb-2">Model Accuracy</h3><p class="text-4xl font-bold text-cyan-400">${(data.test_accuracy * 100).toFixed(2)}%</p><p class="text-sm text-gray-400 mt-1">on Test Data</p></div>`;
 
-            // THE FIX IS HERE: Safely build the classification report table
             reportHtml += `<div class="card"><h3 class="text-lg font-semibold mb-2">Classification Report</h3><table class="w-full text-left text-sm"><thead><tr class="border-b border-gray-600"><th class="p-2">Class</th><th class="p-2">Precision</th><th class="p-2">Recall</th><th class="p-2">F1-Score</th><th class="p-2">Support</th></tr></thead><tbody>`;
             const report = data.classification_report;
-            // Check for both string and boolean keys to be safe
             const falseKey = report.hasOwnProperty('false') ? 'false' : 'False';
             const trueKey = report.hasOwnProperty('true') ? 'true' : 'True';
 
@@ -325,4 +457,3 @@
     </script>
 </body>
 </html>
-
