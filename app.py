@@ -208,35 +208,100 @@ def get_large_deals_data(sales_region, amount_threshold):
     return {'deal_count': deal_count}
 
 def get_current_open_commit_data(start_date, end_date, sales_region):
-    """ Calculates the value of current open commit opportunities. """
     if not sf_connection: return {}
-    
     commit_products = "('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex')"
-    
-    where_clauses = [
-        "IsClosed = False",
-        "ForecastCategoryName = 'Commit'",
-        f"Primary_Product__c IN {commit_products}"
-    ]
-    if start_date:
-        where_clauses.append(f"CloseDate >= {start_date}")
-    if end_date:
-        where_clauses.append(f"CloseDate <= {end_date}")
+    where_clauses = ["IsClosed = False", "ForecastCategoryName = 'Commit'", f"Primary_Product__c IN {commit_products}"]
+    if start_date: where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date: where_clauses.append(f"CloseDate <= {end_date}")
     if sales_region and sales_region != 'All':
         regions_list = sales_region.split(',')
         formatted_regions = "','".join(regions_list)
         where_clauses.append(f"Sales_Region__c IN ('{formatted_regions}')")
-    
     soql_query = f"SELECT SUM(Amount) FROM Opportunity WHERE {' AND '.join(where_clauses)}"
-    
     try:
         result = sf_connection.query(soql_query)
         commit_amount = result['records'][0]['expr0'] or 0
     except Exception as e:
         print(f"❌ Current Open Commit Query Error: {e}")
         return {'commit_amount': 0}
-
     return {'commit_amount': commit_amount}
+
+def get_current_forecast_data(start_date, end_date, sales_region):
+    booked_data = get_booked_revenue_data(start_date, end_date, sales_region)
+    commit_data = get_current_open_commit_data(start_date, end_date, sales_region)
+    booked_revenue = booked_data.get('booked_revenue', 0)
+    open_commit = commit_data.get('commit_amount', 0)
+    current_forecast = booked_revenue + open_commit
+    return {'current_forecast': current_forecast}
+
+def get_rep_performance_data(start_date, end_date):
+    if not sf_connection: return {}
+    
+    owner_exclusions = "('Casey Abbott', 'Grace de Leon', 'Aundria Giardina')"
+    booking_products = ('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex', None, '')
+    
+    shared_where = []
+    if start_date: shared_where.append(f"CloseDate >= {start_date}")
+    if end_date: shared_where.append(f"CloseDate <= {end_date}")
+    shared_where_string = ' AND '.join(shared_where)
+
+    soql_query = f"""
+        SELECT Owner.Name, Amount, Amount_Goal__c, StageName, Primary_Product__c, Account.Name, Quote_Number__c, Quota_Period__c, CloseDate
+        FROM Opportunity
+        WHERE {shared_where_string}
+        {'AND' if shared_where else ''} Owner.Name NOT IN {owner_exclusions}
+    """
+    
+    try:
+        query_result = sf_connection.query_all(soql_query)
+        if not query_result['records']: return {}
+            
+        records = []
+        for rec in query_result['records']:
+            records.append({
+                'ownerName': rec['Owner']['Name'],
+                'Amount': rec['Amount'],
+                'Amount_Goal__c': rec['Amount_Goal__c'],
+                'StageName': rec['StageName'],
+                'Primary_Product__c': rec['Primary_Product__c'],
+                'AccountName': rec['Account']['Name'] if rec['Account'] else '',
+                'Quote_Number__c': rec['Quote_Number__c'],
+                'Quota_Period__c': rec['Quota_Period__c']
+            })
+        df = pd.DataFrame(records)
+
+        quota_df = df[(df['StageName'] == 'Quota') & (df['Quota_Period__c'] == 'Monthly')]
+        quota_agg = quota_df.groupby('ownerName')['Amount_Goal__c'].sum().reset_index().rename(columns={'Amount_Goal__c': 'totalQuota'})
+
+        bookings_df = df[
+            (df['StageName'] == 'Closed Won') &
+            (~df['AccountName'].str.contains('ixsystems|iX Amazon', case=False, na=False)) &
+            (~df['Quote_Number__c'].str.contains('configurated', case=False, na=False)) &
+            (df['Primary_Product__c'].isin(booking_products))
+        ]
+        bookings_agg = bookings_df.groupby('ownerName')['Amount'].sum().reset_index().rename(columns={'Amount': 'totalBookings'})
+        
+        if quota_agg.empty: return {}
+
+        merged_df = pd.merge(quota_agg, bookings_agg, on='ownerName', how='left').fillna(0)
+        
+        merged_df = merged_df[merged_df['totalQuota'] > 0]
+        
+        merged_df['percent_to_quota'] = merged_df.apply(
+            lambda row: (row['totalBookings'] / row['totalQuota'] * 100),
+            axis=1
+        )
+        merged_df = merged_df.sort_values(by='percent_to_quota', ascending=False)
+        
+    except Exception as e:
+        print(f"❌ Rep Performance Query Error: {e}")
+        return {}
+
+    return {
+        'reps': merged_df['ownerName'].tolist(),
+        'percentages': merged_df['percent_to_quota'].tolist()
+    }
+
 
 def get_sdr_activity_data(start_date, end_date, activity_type):
     if not sf_connection: return {}
@@ -423,6 +488,14 @@ def deals_200k_endpoint():
 @app.route('/api/data/current-open-commit')
 def current_open_commit_endpoint():
     return jsonify(get_current_open_commit_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
+@app.route('/api/data/current-forecast')
+def current_forecast_endpoint():
+    return jsonify(get_current_forecast_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+
+@app.route('/api/data/rep-performance')
+def rep_performance_endpoint():
+    return jsonify(get_rep_performance_data(request.args.get('start_date'), request.args.get('end_date')))
 
 @app.route('/api/data/sdr-generated-opps-chart')
 def sdr_generated_opps_chart_endpoint():

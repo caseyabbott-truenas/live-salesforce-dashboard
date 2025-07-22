@@ -79,27 +79,40 @@
 
             <!-- Tab Content Panels -->
             <div id="kpi-dashboard" class="tab-content active">
+                <!-- THE FIX IS HERE: All 8 KPI cards are restored and numbered -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                     <div class="card"><h3 class="text-gray-400 text-sm font-medium">1. Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">2. TrueNAS >$100k</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">3. TrueNAS >$200k</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">4. % to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">5. New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">6. Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">7. Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">2. Current Forecast</h3><p id="kpi-current-forecast" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">3. Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">4. TrueNAS >$100k</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">5. TrueNAS >$200k</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">6. % to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">7. New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">8. Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <div class="card"><div id="forecast-chart-container" style="height: 600px;"></div></div>
                     <div class="card"><div id="bookings-chart-container" style="height: 600px;"></div></div>
+                    <div class="card col-span-1 xl:col-span-2">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-white">Rep Performance (% to Quota)</h3>
+                            <div class="flex items-center space-x-2">
+                                <label for="rep-performance-threshold" class="filter-label text-sm">Min. % to Quota:</label>
+                                <input type="range" id="rep-performance-threshold" min="0" max="200" value="0" class="w-32">
+                                <span id="rep-threshold-value" class="text-white font-semibold">0%</span>
+                            </div>
+                        </div>
+                        <div id="rep-performance-chart-container" style="height: 600px;"></div>
+                    </div>
                 </div>
             </div>
 
             <div id="sdr-dashboard" class="tab-content">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="card"><div id="sdr-generated-opps-chart-container" style="height: 500px;"></div></div>
-                    <div class="card"><div id="sdr-meeting-chart-container" class="chart-container" style="height: 500px;"></div></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="card"><div id="sdr-email-chart-container" style="height: 500px;"></div></div>
                     <div class="card"><div id="sdr-call-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><div id="sdr-meeting-chart-container" class="chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><div id="sdr-generated-opps-chart-container" style="height: 500px;"></div></div>
                 </div>
             </div>
 
@@ -133,6 +146,8 @@
     </div>
 
     <script>
+        let _repPerformanceData = null;
+
         document.addEventListener('DOMContentLoaded', function() {
             setDefaultDates();
             populateRegionFilter();
@@ -140,7 +155,14 @@
             setupTabs();
             document.getElementById('apply-filters').addEventListener('click', updateActiveDashboard);
             document.getElementById('apply-ml-filters').addEventListener('click', updateMlDashboard);
-            updateKpiDashboard(); // Load the initial dashboard
+            
+            const repThresholdSlider = document.getElementById('rep-performance-threshold');
+            repThresholdSlider.addEventListener('input', () => {
+                document.getElementById('rep-threshold-value').textContent = `${repThresholdSlider.value}%`;
+                renderRepPerformanceChart(_repPerformanceData); 
+            });
+
+            updateKpiDashboard(); 
         });
 
         function setupTabs() {
@@ -161,7 +183,7 @@
                         }
                     } else {
                         filtersContainer.style.display = 'block';
-                        updateActiveDashboard(); // Refresh data when switching to a new tab
+                        updateActiveDashboard();
                     }
                 });
             });
@@ -242,6 +264,7 @@
             const queryParams = getFilterParams();
             showLoading('forecast-chart-container', 'Forecast by Region');
             showLoading('bookings-chart-container', 'Bookings by Month');
+            showLoading('rep-performance-chart-container', 'Rep Performance');
             document.getElementById('kpi-goal').textContent = '...';
             document.getElementById('kpi-booked-revenue').textContent = '...';
             document.getElementById('kpi-new-storage-customers').textContent = '...';
@@ -249,6 +272,7 @@
             document.getElementById('kpi-100k-deals').textContent = '...';
             document.getElementById('kpi-200k-deals').textContent = '...';
             document.getElementById('kpi-open-commit').textContent = '...';
+            document.getElementById('kpi-current-forecast').textContent = '...';
 
             Promise.all([
                 fetch('/api/data/forecast' + queryParams).then(res => res.json()),
@@ -259,8 +283,10 @@
                 fetch('/api/data/repeat-storage-customers' + queryParams).then(res => res.json()),
                 fetch('/api/data/100k-deals' + queryParams).then(res => res.json()),
                 fetch('/api/data/200k-deals' + queryParams).then(res => res.json()),
-                fetch('/api/data/current-open-commit' + queryParams).then(res => res.json())
-            ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, newStorage, repeatStorage, deals100k, deals200k, openCommitData]) => {
+                fetch('/api/data/current-open-commit' + queryParams).then(res => res.json()),
+                fetch('/api/data/current-forecast' + queryParams).then(res => res.json()),
+                fetch('/api/data/rep-performance' + queryParams).then(res => res.json())
+            ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, newStorage, repeatStorage, deals100k, deals200k, openCommitData, currentForecastData, repData]) => {
                 renderForecastChart(forecastData);
                 renderBookingsChart(bookingsData);
                 renderGoalCard(goalData);
@@ -270,6 +296,9 @@
                 renderLargeDealsCard('kpi-100k-deals', deals100k);
                 renderLargeDealsCard('kpi-200k-deals', deals200k);
                 renderCurrentOpenCommitCard(openCommitData);
+                renderCurrentForecastCard(currentForecastData);
+                _repPerformanceData = repData;
+                renderRepPerformanceChart(_repPerformanceData);
             }).catch(error => console.error('Error fetching KPI data:', error));
         }
 
@@ -355,6 +384,16 @@
             }
         }
 
+        function renderCurrentForecastCard(data) {
+            const kpiEl = document.getElementById('kpi-current-forecast');
+            if (data && typeof data.current_forecast !== 'undefined') {
+                const value = data.current_forecast;
+                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
+            } else {
+                kpiEl.textContent = 'N/A';
+            }
+        }
+
         function renderForecastChart(data) {
             const container = document.getElementById('forecast-chart-container');
             container.innerHTML = ''; 
@@ -379,7 +418,7 @@
             }
             
             const traces = [];
-            const regionColors = ['#0095D5', '#A0AEC0', '#4299E1', '#718096', '#2B6CB0', '#E2E8F0'];
+            const regionColors = ['#2B6CB0', '#38A169', '#4299E1', '#48BB78', '#2C5282', '#2F855A'];
             data.regions.forEach((region, index) => {
                 traces.push({
                     x: data.labels,
@@ -410,13 +449,59 @@
             if (!data || !data.labels || data.labels.length === 0) {
                 container.innerHTML = `<p class="text-center h-full flex items-center justify-center text-gray-400">No data available for ${title}.</p>`; return;
             }
-            const sdrColors = ['#2C5282', '#2B6CB0', '#4299E1', '#63B3ED'];
+            const sdrColors = ['#2B6CB0', '#38A169', '#4299E1', '#48BB78'];
             const traces = [];
             data.sdr_names.forEach((name, index) => {
                 traces.push({x: data.labels, y: data.sdr_data[name], name: name, type: 'bar', marker: {color: sdrColors[index % sdrColors.length]}, text: data.sdr_data[name].map(v => v > 0 ? v : ''), textposition: 'inside', insidetextanchor: 'middle', textfont: {color: 'white', weight: 'bold', size: 16}});
             });
             const layout = {title: `<b>${title}</b>`, barmode: 'group', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 50}, yaxis: {title: yAxisTitle}, xaxis: {title: 'Month'}};
             Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false});
+        }
+        
+        function renderRepPerformanceChart(data) {
+            const container = document.getElementById('rep-performance-chart-container');
+            container.innerHTML = '';
+            
+            const threshold = parseInt(document.getElementById('rep-performance-threshold').value, 10);
+
+            if (!data || !data.reps || data.reps.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No rep performance data available.</p>'; return;
+            }
+
+            const filteredReps = [];
+            const filteredPercentages = [];
+            data.percentages.forEach((p, index) => {
+                if (p >= threshold) {
+                    filteredReps.push(data.reps[index]);
+                    filteredPercentages.push(p);
+                }
+            });
+
+            if (filteredReps.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No reps meet the selected threshold.</p>'; return;
+            }
+
+            const trace = {
+                y: filteredReps,
+                x: filteredPercentages,
+                type: 'bar',
+                orientation: 'h',
+                marker: { color: '#2B6CB0' },
+                text: filteredPercentages.map(p => `${p.toFixed(1)}%`),
+                textposition: 'inside',
+                insidetextanchor: 'middle',
+                textfont: { color: 'white', weight: 'bold', size: 16 }
+            };
+            const layout = {
+                template: 'plotly_dark',
+                font: {family: "Inter, sans-serif", color: "white"},
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: {l: 150, r: 20, t: 20, b: 50},
+                xaxis: {title: '% to Quota', ticksuffix: '%'},
+                yaxis: {autorange: 'reversed'}
+            };
+            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false});
         }
         
         function renderMlDashboard(data) {
