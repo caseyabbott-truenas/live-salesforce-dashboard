@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from simple_salesforce import Salesforce
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import numpy as np
 
@@ -55,6 +55,38 @@ def convert_numpy_types(obj):
         return obj
 
 # --- DATA FETCHING AND TRANSFORMATION FUNCTIONS ---
+
+def get_comparison_data(data_function, start_date_str, end_date_str, sales_region, **kwargs):
+    """
+    A wrapper function to get data for a current period, its preceding period, and the same period last year.
+    """
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        delta = end_date - start_date
+        
+        # Previous period
+        prev_end_date = start_date - timedelta(days=1)
+        prev_start_date = prev_end_date - delta
+        prev_start_date_str = prev_start_date.strftime('%Y-%m-%d')
+        prev_end_date_str = prev_end_date.strftime('%Y-%m-%d')
+
+        # Same period last year
+        last_year_start_date = start_date - relativedelta(years=1)
+        last_year_end_date = end_date - relativedelta(years=1)
+        last_year_start_date_str = last_year_start_date.strftime('%Y-%m-%d')
+        last_year_end_date_str = last_year_end_date.strftime('%Y-%m-%d')
+
+        current_data = data_function(start_date_str, end_date_str, sales_region, **kwargs)
+        previous_data = data_function(prev_start_date_str, prev_end_date_str, sales_region, **kwargs)
+        last_year_data = data_function(last_year_start_date_str, last_year_end_date_str, sales_region, **kwargs)
+        
+        return {'current': current_data, 'previous': previous_data, 'last_year': last_year_data}
+        
+    except Exception as e:
+        print(f"❌ Period comparison calculation error for {data_function.__name__}: {e}")
+        return {'current': data_function(start_date_str, end_date_str, sales_region, **kwargs), 'previous': {}, 'last_year': {}}
+
 
 def get_forecast_data(start_date, end_date, sales_region):
     if not sf_connection: return {}
@@ -191,9 +223,11 @@ def get_repeat_storage_customers_data(start_date, end_date, sales_region):
         return {'customer_count': 0}
     return {'customer_count': customer_count}
 
-def get_large_deals_data(sales_region, amount_threshold):
+def get_large_deals_data(start_date, end_date, sales_region, amount_threshold):
     if not sf_connection: return {}
-    where_clauses = ["IsWon = True", "Primary_Product__c != 'Servers'", f"Amount >= {amount_threshold}", "CloseDate = THIS_FISCAL_QUARTER"]
+    where_clauses = ["IsWon = True", "Primary_Product__c != 'Servers'", f"Amount >= {amount_threshold}"]
+    if start_date: where_clauses.append(f"CloseDate >= {start_date}")
+    if end_date: where_clauses.append(f"CloseDate <= {end_date}")
     if sales_region and sales_region != 'All':
         regions_list = sales_region.split(',')
         formatted_regions = "','".join(regions_list)
@@ -236,72 +270,31 @@ def get_current_forecast_data(start_date, end_date, sales_region):
 
 def get_rep_performance_data(start_date, end_date):
     if not sf_connection: return {}
-    
     owner_exclusions = "('Casey Abbott', 'Grace de Leon', 'Aundria Giardina')"
     booking_products = ('TrueNAS', 'TrueNAS Mini', 'TrueCommand', 'TrueRack', 'TrueFlex', None, '')
-    
     shared_where = []
     if start_date: shared_where.append(f"CloseDate >= {start_date}")
     if end_date: shared_where.append(f"CloseDate <= {end_date}")
     shared_where_string = ' AND '.join(shared_where)
-
-    soql_query = f"""
-        SELECT Owner.Name, Amount, Amount_Goal__c, StageName, Primary_Product__c, Account.Name, Quote_Number__c, Quota_Period__c, CloseDate
-        FROM Opportunity
-        WHERE {shared_where_string}
-        {'AND' if shared_where else ''} Owner.Name NOT IN {owner_exclusions}
-    """
-    
+    soql_query = f"SELECT Owner.Name, Amount, Amount_Goal__c, StageName, Primary_Product__c, Account.Name, Quote_Number__c, Quota_Period__c, CloseDate FROM Opportunity WHERE {shared_where_string} {'AND' if shared_where else ''} Owner.Name NOT IN {owner_exclusions}"
     try:
         query_result = sf_connection.query_all(soql_query)
         if not query_result['records']: return {}
-            
-        records = []
-        for rec in query_result['records']:
-            records.append({
-                'ownerName': rec['Owner']['Name'],
-                'Amount': rec['Amount'],
-                'Amount_Goal__c': rec['Amount_Goal__c'],
-                'StageName': rec['StageName'],
-                'Primary_Product__c': rec['Primary_Product__c'],
-                'AccountName': rec['Account']['Name'] if rec['Account'] else '',
-                'Quote_Number__c': rec['Quote_Number__c'],
-                'Quota_Period__c': rec['Quota_Period__c']
-            })
+        records = [{'ownerName': rec['Owner']['Name'], 'Amount': rec['Amount'], 'Amount_Goal__c': rec['Amount_Goal__c'], 'StageName': rec['StageName'], 'Primary_Product__c': rec['Primary_Product__c'], 'AccountName': rec['Account']['Name'] if rec['Account'] else '', 'Quote_Number__c': rec['Quote_Number__c'], 'Quota_Period__c': rec['Quota_Period__c']} for rec in query_result['records']]
         df = pd.DataFrame(records)
-
         quota_df = df[(df['StageName'] == 'Quota') & (df['Quota_Period__c'] == 'Monthly')]
         quota_agg = quota_df.groupby('ownerName')['Amount_Goal__c'].sum().reset_index().rename(columns={'Amount_Goal__c': 'totalQuota'})
-
-        bookings_df = df[
-            (df['StageName'] == 'Closed Won') &
-            (~df['AccountName'].str.contains('ixsystems|iX Amazon', case=False, na=False)) &
-            (~df['Quote_Number__c'].str.contains('configurated', case=False, na=False)) &
-            (df['Primary_Product__c'].isin(booking_products))
-        ]
+        bookings_df = df[(df['StageName'] == 'Closed Won') & (~df['AccountName'].str.contains('ixsystems|iX Amazon', case=False, na=False)) & (~df['Quote_Number__c'].str.contains('configurated', case=False, na=False)) & (df['Primary_Product__c'].isin(booking_products))]
         bookings_agg = bookings_df.groupby('ownerName')['Amount'].sum().reset_index().rename(columns={'Amount': 'totalBookings'})
-        
         if quota_agg.empty: return {}
-
         merged_df = pd.merge(quota_agg, bookings_agg, on='ownerName', how='left').fillna(0)
-        
         merged_df = merged_df[merged_df['totalQuota'] > 0]
-        
-        merged_df['percent_to_quota'] = merged_df.apply(
-            lambda row: (row['totalBookings'] / row['totalQuota'] * 100),
-            axis=1
-        )
+        merged_df['percent_to_quota'] = merged_df.apply(lambda row: (row['totalBookings'] / row['totalQuota'] * 100), axis=1)
         merged_df = merged_df.sort_values(by='percent_to_quota', ascending=False)
-        
     except Exception as e:
         print(f"❌ Rep Performance Query Error: {e}")
         return {}
-
-    return {
-        'reps': merged_df['ownerName'].tolist(),
-        'percentages': merged_df['percent_to_quota'].tolist()
-    }
-
+    return {'reps': merged_df['ownerName'].tolist(), 'percentages': merged_df['percent_to_quota'].tolist()}
 
 def get_sdr_activity_data(start_date, end_date, activity_type):
     if not sf_connection: return {}
@@ -325,7 +318,8 @@ def get_sdr_activity_data(start_date, end_date, activity_type):
     df['label'] = df['ActivityDate'].dt.strftime('%Y-%m')
     grouped_df = df.groupby(['label', 'ownerName']).size().reset_index(name='count')
     pivot_df = grouped_df.pivot_table(index='label', columns='ownerName', values='count', aggfunc='sum').fillna(0)
-    pivot_df.index = pd.to_datetime(pivot_df.index, format='%Y-%m').strftime('%b %Y')
+    pivot_df.index = pd.to_datetime(pivot_df.index, format='%b %Y')
+    pivot_df.index = pivot_df.index.strftime('%b %Y')
     return {'labels': pivot_df.index.tolist(), 'sdr_data': {col: pivot_df[col].tolist() for col in pivot_df.columns}, 'sdr_names': pivot_df.columns.tolist()}
 
 def get_sdr_generated_opps_chart_data(start_date, end_date, sales_region):
@@ -463,35 +457,35 @@ def bookings_data_endpoint():
 
 @app.route('/api/data/goal')
 def goal_data_endpoint():
-    return jsonify(get_goal_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_goal_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/booked-revenue')
 def booked_revenue_endpoint():
-    return jsonify(get_booked_revenue_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_booked_revenue_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/new-storage-customers')
 def new_storage_customers_endpoint():
-    return jsonify(get_new_storage_customers_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_new_storage_customers_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/repeat-storage-customers')
 def repeat_storage_customers_endpoint():
-    return jsonify(get_repeat_storage_customers_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_repeat_storage_customers_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/100k-deals')
 def deals_100k_endpoint():
-    return jsonify(get_large_deals_data(request.args.get('sales_region'), 100000))
+    return jsonify(get_comparison_data(get_large_deals_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region'), amount_threshold=100000))
 
 @app.route('/api/data/200k-deals')
 def deals_200k_endpoint():
-    return jsonify(get_large_deals_data(request.args.get('sales_region'), 200000))
+    return jsonify(get_comparison_data(get_large_deals_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region'), amount_threshold=200000))
 
 @app.route('/api/data/current-open-commit')
 def current_open_commit_endpoint():
-    return jsonify(get_current_open_commit_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_current_open_commit_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/current-forecast')
 def current_forecast_endpoint():
-    return jsonify(get_current_forecast_data(request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
+    return jsonify(get_comparison_data(get_current_forecast_data, request.args.get('start_date'), request.args.get('end_date'), request.args.get('sales_region')))
 
 @app.route('/api/data/rep-performance')
 def rep_performance_endpoint():

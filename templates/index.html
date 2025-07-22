@@ -79,16 +79,18 @@
 
             <!-- Tab Content Panels -->
             <div id="kpi-dashboard" class="tab-content active">
-                <!-- THE FIX IS HERE: All 8 KPI cards are restored and numbered -->
+                <!-- THE FIX IS HERE: The KPI cards have been reordered into two rows -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">1. Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">2. Current Forecast</h3><p id="kpi-current-forecast" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">3. Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">4. TrueNAS >$100k</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">5. TrueNAS >$200k</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">6. % to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">7. New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">8. Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-booked-revenue-delta"></span><br><span id="kpi-booked-revenue-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Current Forecast</h3><p id="kpi-current-forecast" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-current-forecast-delta"></span><br><span id="kpi-current-forecast-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">% to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p><div class="text-xs mt-1"><span id="kpi-goal-delta"></span><br><span id="kpi-goal-yoy"></span></div></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">TrueNAS Deals > $100K</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-100k-deals-delta"></span><br><span id="kpi-100k-deals-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">TrueNAS Deals > $200K</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-200k-deals-delta"></span><br><span id="kpi-200k-deals-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-new-storage-customers-delta"></span><br><span id="kpi-new-storage-customers-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-repeat-storage-customers-delta"></span><br><span id="kpi-repeat-storage-customers-yoy"></span></div></div>
                 </div>
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <div class="card"><div id="forecast-chart-container" style="height: 600px;"></div></div>
@@ -289,14 +291,14 @@
             ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, newStorage, repeatStorage, deals100k, deals200k, openCommitData, currentForecastData, repData]) => {
                 renderForecastChart(forecastData);
                 renderBookingsChart(bookingsData);
-                renderGoalCard(goalData);
-                renderBookedRevenueCard(bookedRevenueData);
-                renderNewStorageCustomersCard(newStorage);
-                renderRepeatStorageCustomersCard(repeatStorage);
-                renderLargeDealsCard('kpi-100k-deals', deals100k);
-                renderLargeDealsCard('kpi-200k-deals', deals200k);
-                renderCurrentOpenCommitCard(openCommitData);
-                renderCurrentForecastCard(currentForecastData);
+                renderKpiCard('kpi-goal', goalData, 'percentage', '%');
+                renderKpiCard('kpi-booked-revenue', bookedRevenueData, 'booked_revenue', '$');
+                renderKpiCard('kpi-new-storage-customers', newStorage, 'customer_count', '');
+                renderKpiCard('kpi-repeat-storage-customers', repeatStorage, 'customer_count', '');
+                renderKpiCard('kpi-100k-deals', deals100k, 'deal_count', '');
+                renderKpiCard('kpi-200k-deals', deals200k, 'deal_count', '');
+                renderKpiCard('kpi-open-commit', openCommitData, 'commit_amount', '$');
+                renderKpiCard('kpi-current-forecast', currentForecastData, 'current_forecast', '$');
                 _repPerformanceData = repData;
                 renderRepPerformanceChart(_repPerformanceData);
             }).catch(error => console.error('Error fetching KPI data:', error));
@@ -338,59 +340,58 @@
         function showLoading(containerId, title) {
             document.getElementById(containerId).innerHTML = `<div class="flex flex-col h-full justify-center items-center text-gray-400"><h3 class="text-lg font-semibold text-white mb-4">${title}</h3><p>⏳ Loading Data...</p></div>`;
         }
-
-        function renderBookedRevenueCard(data) {
-            const kpiEl = document.getElementById('kpi-booked-revenue');
-            if (data && typeof data.booked_revenue !== 'undefined') {
-                const value = data.booked_revenue;
-                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
-            } else kpiEl.textContent = 'N/A';
-        }
-
-        function renderGoalCard(data) {
-            const kpiEl = document.getElementById('kpi-goal');
-            if (data && typeof data.percentage !== 'undefined') kpiEl.textContent = `${data.percentage}%`;
-            else kpiEl.textContent = 'N/A';
-        }
-
-        function renderNewStorageCustomersCard(data) {
-            const kpiEl = document.getElementById('kpi-new-storage-customers');
-            if (data && typeof data.customer_count !== 'undefined') kpiEl.textContent = data.customer_count;
-            else kpiEl.textContent = 'N/A';
-        }
         
-        function renderRepeatStorageCustomersCard(data) {
-            const kpiEl = document.getElementById('kpi-repeat-storage-customers');
-            if (data && typeof data.customer_count !== 'undefined') kpiEl.textContent = data.customer_count;
-            else kpiEl.textContent = 'N/A';
+        function formatValue(value, prefix = '', suffix = '') {
+            let formattedValue;
+            if (prefix === '$') {
+                if (Math.abs(value) >= 1000000) formattedValue = `$${(value / 1000000).toFixed(1)}M`;
+                else if (Math.abs(value) >= 1000) formattedValue = `$${(value / 1000).toFixed(0)}K`;
+                else formattedValue = `$${value.toFixed(0)}`;
+            } else {
+                formattedValue = value.toFixed(suffix === '%' ? 1 : 0);
+            }
+            return `${formattedValue}${suffix}`;
         }
 
-        function renderLargeDealsCard(elementId, data) {
+        function renderKpiCard(elementId, data, key, prefix = '', suffix = '') {
             const kpiEl = document.getElementById(elementId);
-            if (data && typeof data.deal_count !== 'undefined') {
-                kpiEl.textContent = data.deal_count;
-            } else {
-                kpiEl.textContent = 'N/A';
+            const deltaEl = document.getElementById(`${elementId}-delta`);
+            const yoyEl = document.getElementById(`${elementId}-yoy`);
+            
+            const currentValue = data.current ? data.current[key] : 0;
+            const previousValue = data.previous ? data.previous[key] : null;
+            const lastYearValue = data.last_year ? data.last_year[key] : null;
+            
+            kpiEl.textContent = formatValue(currentValue, prefix, suffix);
+            
+            if (deltaEl) {
+                deltaEl.textContent = '';
+                if (previousValue !== null) {
+                    const delta = currentValue - previousValue;
+                    let percentChangeText = '';
+                    if (previousValue !== 0) {
+                        const percentChange = (delta / previousValue) * 100;
+                        percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
+                    }
+                    const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
+                    deltaEl.textContent = `${deltaText}${percentChangeText} vs Previous Period`;
+                    deltaEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                }
             }
-        }
-        
-        function renderCurrentOpenCommitCard(data) {
-            const kpiEl = document.getElementById('kpi-open-commit');
-            if (data && typeof data.commit_amount !== 'undefined') {
-                const value = data.commit_amount;
-                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
-            } else {
-                kpiEl.textContent = 'N/A';
-            }
-        }
 
-        function renderCurrentForecastCard(data) {
-            const kpiEl = document.getElementById('kpi-current-forecast');
-            if (data && typeof data.current_forecast !== 'undefined') {
-                const value = data.current_forecast;
-                kpiEl.textContent = value >= 1000000 ? `$${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `$${(value / 1000).toFixed(0)}K` : `$${value}`;
-            } else {
-                kpiEl.textContent = 'N/A';
+            if (yoyEl) {
+                yoyEl.textContent = '';
+                if (lastYearValue !== null) {
+                    const delta = currentValue - lastYearValue;
+                    let percentChangeText = '';
+                    if (lastYearValue !== 0) {
+                        const percentChange = (delta / lastYearValue) * 100;
+                        percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
+                    }
+                    const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
+                    yoyEl.textContent = `${deltaText}${percentChangeText} vs Last Year`;
+                    yoyEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                }
             }
         }
 
