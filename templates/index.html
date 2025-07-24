@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sales & Marketing Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.29.1.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #111827; }
@@ -17,6 +17,13 @@
         .tab:not(.active):hover { background-color: #4B5563; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        .map-toggle-btn {
+            background-color: #374151;
+            transition: background-color 0.2s;
+        }
+        .map-toggle-btn.active {
+            background-color: #3B82F6;
+        }
     </style>
 </head>
 <body class="text-white bg-gray-900">
@@ -79,42 +86,61 @@
 
             <!-- Tab Content Panels -->
             <div id="kpi-dashboard" class="tab-content active">
-                <!-- THE FIX IS HERE: The KPI cards have been reordered into two rows -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-booked-revenue-delta"></span><br><span id="kpi-booked-revenue-yoy"></span></div></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Current Forecast</h3><p id="kpi-current-forecast" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-current-forecast-delta"></span><br><span id="kpi-current-forecast-yoy"></span></div></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">% to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p><div class="text-xs mt-1"><span id="kpi-goal-delta"></span><br><span id="kpi-goal-yoy"></span></div></div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">TrueNAS Deals > $100K</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-100k-deals-delta"></span><br><span id="kpi-100k-deals-yoy"></span></div></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">TrueNAS Deals > $200K</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-200k-deals-delta"></span><br><span id="kpi-200k-deals-yoy"></span></div></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-new-storage-customers-delta"></span><br><span id="kpi-new-storage-customers-yoy"></span></div></div>
-                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-repeat-storage-customers-delta"></span><br><span id="kpi-repeat-storage-customers-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">1. Booked Revenue</h3><p id="kpi-booked-revenue" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-booked-revenue-delta"></span><br><span id="kpi-booked-revenue-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">2. Current Forecast</h3><p id="kpi-current-forecast" class="text-3xl font-bold mt-2">$0</p><div class="text-xs mt-1"><span id="kpi-current-forecast-delta"></span><br><span id="kpi-current-forecast-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">3. Current Open Commit</h3><p id="kpi-open-commit" class="text-3xl font-bold mt-2">$0</p></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">4. % to Goal</h3><p id="kpi-goal" class="text-3xl font-bold mt-2">0%</p><div class="text-xs mt-1"><span id="kpi-goal-delta"></span><br><span id="kpi-goal-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">5. TrueNAS Deals > $100K</h3><p id="kpi-100k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-100k-deals-delta"></span><br><span id="kpi-100k-deals-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">6. TrueNAS Deals > $200K</h3><p id="kpi-200k-deals" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-200k-deals-delta"></span><br><span id="kpi-200k-deals-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">7. New Storage Customers</h3><p id="kpi-new-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-new-storage-customers-delta"></span><br><span id="kpi-new-storage-customers-yoy"></span></div></div>
+                    <div class="card"><h3 class="text-gray-400 text-sm font-medium">8. Repeat Storage Customers</h3><p id="kpi-repeat-storage-customers" class="text-3xl font-bold mt-2">0</p><div class="text-xs mt-1"><span id="kpi-repeat-storage-customers-delta"></span><br><span id="kpi-repeat-storage-customers-yoy"></span></div></div>
                 </div>
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    <div class="card"><div id="forecast-chart-container" style="height: 600px;"></div></div>
-                    <div class="card"><div id="bookings-chart-container" style="height: 600px;"></div></div>
-                    <div class="card col-span-1 xl:col-span-2">
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">9. Opportunity Forecast</h3><div id="forecast-chart-container" style="height: 600px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">10. Bookings by Month</h3><div id="bookings-chart-container" style="height: 600px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">11. Sales Goal Pacing</h3><div id="sales-pacing-chart-container" style="height: 600px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">12. Open Pipeline by Stage</h3><div id="pipeline-chart-container" style="height: 600px;"></div></div>
+                    <div class="card">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-semibold text-white">Rep Performance (% to Quota)</h3>
+                            <h3 class="text-lg font-semibold text-white">13. Rep Performance (% to Quota)</h3>
                             <div class="flex items-center space-x-2">
-                                <label for="rep-performance-threshold" class="filter-label text-sm">Min. % to Quota:</label>
+                                <label for="rep-performance-threshold" class="filter-label text-sm">Min. %:</label>
                                 <input type="range" id="rep-performance-threshold" min="0" max="200" value="0" class="w-32">
                                 <span id="rep-threshold-value" class="text-white font-semibold">0%</span>
                             </div>
                         </div>
                         <div id="rep-performance-chart-container" style="height: 600px;"></div>
                     </div>
+                    <div class="card">
+                        <h3 class="text-lg font-semibold text-white mb-4">14. Rep Performance (Closed Won vs. Quota)</h3>
+                        <div id="rep-closed-vs-quota-chart-container" style="height: 600px;"></div>
+                    </div>
+                    <div class="card xl:col-span-2">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-white">15. Sales by Country</h3>
+                            <div id="map-toggles" class="flex space-x-2">
+                                <button class="map-toggle-btn active text-sm font-medium py-1 px-3 rounded-md" data-scope="world">World</button>
+                                <button class="map-toggle-btn text-sm font-medium py-1 px-3 rounded-md" data-scope="europe">Europe</button>
+                                <button class="map-toggle-btn text-sm font-medium py-1 px-3 rounded-md" data-scope="asia">Asia</button>
+                                <button class="map-toggle-btn text-sm font-medium py-1 px-3 rounded-md" data-scope="latin_america">LATAM</button>
+                            </div>
+                        </div>
+                        <div id="billing-map-chart-container" style="height: 600px;"></div>
+                    </div>
+                     <div class="card xl:col-span-2">
+                        <h3 class="text-lg font-semibold text-white mb-4">16. USA Sales by State</h3>
+                        <div id="usa-map-chart-container" style="height: 600px;"></div>
+                    </div>
                 </div>
             </div>
 
             <div id="sdr-dashboard" class="tab-content">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="card"><div id="sdr-email-chart-container" style="height: 500px;"></div></div>
-                    <div class="card"><div id="sdr-call-chart-container" style="height: 500px;"></div></div>
-                    <div class="card"><div id="sdr-meeting-chart-container" class="chart-container" style="height: 500px;"></div></div>
-                    <div class="card"><div id="sdr-generated-opps-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">1. SDR [Gong] Emails by Month</h3><div id="sdr-email-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">2. SDR Calls by Month</h3><div id="sdr-call-chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">3. SDR Meetings by Month</h3><div id="sdr-meeting-chart-container" class="chart-container" style="height: 500px;"></div></div>
+                    <div class="card"><h3 class="text-lg font-semibold text-white mb-4">4. SDR Generated Opps by Month</h3><div id="sdr-generated-opps-chart-container" style="height: 500px;"></div></div>
                 </div>
             </div>
 
@@ -149,12 +175,15 @@
 
     <script>
         let _repPerformanceData = null;
+        let _repClosedVsQuotaData = null;
+        let currentMapScope = 'world'; // State for the map view
 
         document.addEventListener('DOMContentLoaded', function() {
             setDefaultDates();
             populateRegionFilter();
             setupDropdown();
             setupTabs();
+            setupMapToggles();
             document.getElementById('apply-filters').addEventListener('click', updateActiveDashboard);
             document.getElementById('apply-ml-filters').addEventListener('click', updateMlDashboard);
             
@@ -187,6 +216,18 @@
                         filtersContainer.style.display = 'block';
                         updateActiveDashboard();
                     }
+                });
+            });
+        }
+
+        function setupMapToggles() {
+            const mapToggles = document.querySelectorAll('.map-toggle-btn');
+            mapToggles.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    mapToggles.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentMapScope = btn.dataset.scope;
+                    updateBillingCountryMap(); // Refresh only the country map
                 });
             });
         }
@@ -249,7 +290,7 @@
             const checkedBoxes = document.querySelectorAll('#sales-region-options input:checked');
             const selectedRegions = Array.from(checkedBoxes).map(cb => cb.value);
             const salesRegionParam = selectedRegions.length > 0 ? selectedRegions.join(',') : 'All';
-            return `?start_date=${startDate}&end_date=${endDate}&sales_region=${salesRegionParam}`;
+            return `?start_date=${startDate}&end_date=${endDate}&sales_region=${encodeURIComponent(salesRegionParam)}`;
         }
 
         function updateActiveDashboard() {
@@ -264,34 +305,40 @@
 
         function updateKpiDashboard() {
             const queryParams = getFilterParams();
-            showLoading('forecast-chart-container', 'Forecast by Region');
-            showLoading('bookings-chart-container', 'Bookings by Month');
-            showLoading('rep-performance-chart-container', 'Rep Performance');
-            document.getElementById('kpi-goal').textContent = '...';
-            document.getElementById('kpi-booked-revenue').textContent = '...';
-            document.getElementById('kpi-new-storage-customers').textContent = '...';
-            document.getElementById('kpi-repeat-storage-customers').textContent = '...';
-            document.getElementById('kpi-100k-deals').textContent = '...';
-            document.getElementById('kpi-200k-deals').textContent = '...';
-            document.getElementById('kpi-open-commit').textContent = '...';
-            document.getElementById('kpi-current-forecast').textContent = '...';
+            showLoading('forecast-chart-container', '9. Opportunity Forecast');
+            showLoading('bookings-chart-container', '10. Bookings by Month');
+            showLoading('rep-performance-chart-container', '13. Rep Performance (% to Quota)');
+            showLoading('rep-closed-vs-quota-chart-container', '14. Rep Performance (Closed Won vs. Quota)');
+            showLoading('sales-pacing-chart-container', '11. Sales Goal Pacing');
+            showLoading('pipeline-chart-container', '12. Open Pipeline by Stage');
+            
+            document.querySelectorAll('[id^="kpi-"]').forEach(el => {
+                if(el.tagName === 'P') el.textContent = '...';
+                if(el.tagName === 'SPAN') el.textContent = '';
+            });
 
-            Promise.all([
-                fetch('/api/data/forecast' + queryParams).then(res => res.json()),
-                fetch('/api/data/bookings' + queryParams).then(res => res.json()),
-                fetch('/api/data/goal' + queryParams).then(res => res.json()),
-                fetch('/api/data/booked-revenue' + queryParams).then(res => res.json()),
-                fetch('/api/data/new-storage-customers' + queryParams).then(res => res.json()),
-                fetch('/api/data/repeat-storage-customers' + queryParams).then(res => res.json()),
-                fetch('/api/data/100k-deals' + queryParams).then(res => res.json()),
-                fetch('/api/data/200k-deals' + queryParams).then(res => res.json()),
-                fetch('/api/data/current-open-commit' + queryParams).then(res => res.json()),
-                fetch('/api/data/current-forecast' + queryParams).then(res => res.json()),
-                fetch('/api/data/rep-performance' + queryParams).then(res => res.json())
-            ]).then(([forecastData, bookingsData, goalData, bookedRevenueData, newStorage, repeatStorage, deals100k, deals200k, openCommitData, currentForecastData, repData]) => {
-                renderForecastChart(forecastData);
-                renderBookingsChart(bookingsData);
-                renderKpiCard('kpi-goal', goalData, 'percentage', '%');
+            const kpiEndpoints = [
+                'goal', 'booked-revenue', 'new-storage-customers', 
+                'repeat-storage-customers', '100k-deals', '200k-deals',
+                'current-open-commit', 'current-forecast'
+            ];
+            const chartEndpoints = ['forecast', 'bookings', 'rep-performance', 'rep-closed-vs-quota', 'sales-pacing', 'pipeline-funnel'];
+            const fetches = [...kpiEndpoints, ...chartEndpoints].map(endpoint => 
+                fetch(`/api/data/${endpoint}${queryParams}`).then(res => res.json())
+            );
+
+            // Separate calls for the maps
+            updateBillingCountryMap();
+            updateUsaStateMap();
+
+            Promise.all(fetches).then(results => {
+                const [
+                    goalData, bookedRevenueData, newStorage, repeatStorage, 
+                    deals100k, deals200k, openCommitData, currentForecastData,
+                    forecastData, bookingsData, repData, repClosedQuotaData, salesPacingData, pipelineData
+                ] = results;
+
+                renderKpiCard('kpi-goal', goalData, 'percentage', '', '%');
                 renderKpiCard('kpi-booked-revenue', bookedRevenueData, 'booked_revenue', '$');
                 renderKpiCard('kpi-new-storage-customers', newStorage, 'customer_count', '');
                 renderKpiCard('kpi-repeat-storage-customers', repeatStorage, 'customer_count', '');
@@ -299,17 +346,48 @@
                 renderKpiCard('kpi-200k-deals', deals200k, 'deal_count', '');
                 renderKpiCard('kpi-open-commit', openCommitData, 'commit_amount', '$');
                 renderKpiCard('kpi-current-forecast', currentForecastData, 'current_forecast', '$');
+
+                renderForecastChart(forecastData);
+                renderBookingsChart(bookingsData);
+                renderSalesPacingChart(salesPacingData);
+                renderOpenPipelineChart(pipelineData);
+
                 _repPerformanceData = repData;
                 renderRepPerformanceChart(_repPerformanceData);
+                _repClosedVsQuotaData = repClosedQuotaData;
+                renderRepClosedVsQuotaChart(_repClosedVsQuotaData);
+
             }).catch(error => console.error('Error fetching KPI data:', error));
+        }
+        
+        function updateBillingCountryMap() {
+            showLoading('billing-map-chart-container', '15. Sales by Country');
+            const queryParams = getFilterParams();
+            fetch(`/api/data/billing-country-map${queryParams}&map_scope=${currentMapScope}`)
+                .then(res => res.json())
+                .then(billingMapData => {
+                    renderBillingCountryMap(billingMapData);
+                })
+                .catch(error => console.error('Error fetching country map data:', error));
+        }
+
+        function updateUsaStateMap() {
+            showLoading('usa-map-chart-container', '16. USA Sales by State');
+            const queryParams = getFilterParams();
+            fetch(`/api/data/billing-state-map${queryParams}`)
+                .then(res => res.json())
+                .then(stateMapData => {
+                    renderUsaStateMap(stateMapData);
+                })
+                .catch(error => console.error('Error fetching state map data:', error));
         }
 
         function updateSdrDashboard() {
             const queryParams = getFilterParams();
-            showLoading('sdr-email-chart-container', 'SDR Emails by Month');
-            showLoading('sdr-call-chart-container', 'SDR Calls by Month');
-            showLoading('sdr-meeting-chart-container', 'SDR Meetings by Month');
-            showLoading('sdr-generated-opps-chart-container', 'SDR Generated Opps by Month');
+            showLoading('sdr-email-chart-container', '1. SDR [Gong] Emails by Month');
+            showLoading('sdr-call-chart-container', '2. SDR Calls by Month');
+            showLoading('sdr-meeting-chart-container', '3. SDR Meetings by Month');
+            showLoading('sdr-generated-opps-chart-container', '4. SDR Generated Opps by Month');
 
             Promise.all([
                 fetch('/api/data/sdr-generated-opps-chart' + queryParams).then(res => res.json()),
@@ -317,10 +395,10 @@
                 fetch('/api/data/sdr-calls' + queryParams).then(res => res.json()),
                 fetch('/api/data/sdr-meetings' + queryParams).then(res => res.json())
             ]).then(([sdrGeneratedOppsData, sdrEmailData, sdrCallData, sdrMeetingData]) => {
-                renderSdrActivityChart('sdr-generated-opps-chart-container', 'SDR Generated Opps by Month', 'Opp Count', sdrGeneratedOppsData);
-                renderSdrActivityChart('sdr-email-chart-container', 'SDR [Gong] Emails by Month', 'Email Count', sdrEmailData);
-                renderSdrActivityChart('sdr-call-chart-container', 'SDR Calls by Month', 'Call Count', sdrCallData);
-                renderSdrActivityChart('sdr-meeting-chart-container', 'SDR Meetings by Month', 'Meeting Count', sdrMeetingData);
+                renderSdrActivityChart('sdr-generated-opps-chart-container', sdrGeneratedOppsData);
+                renderSdrActivityChart('sdr-email-chart-container', sdrEmailData);
+                renderSdrActivityChart('sdr-call-chart-container', sdrCallData);
+                renderSdrActivityChart('sdr-meeting-chart-container', sdrMeetingData);
             }).catch(error => console.error('Error fetching SDR data:', error));
         }
         
@@ -329,7 +407,7 @@
             const months = document.getElementById('ml-months-lookback').value;
             const oppType = document.getElementById('ml-opp-type').value;
             container.innerHTML = `<div class="card text-center"><p class="text-lg">⏳ Training ML Model... This may take a moment.</p></div>`;
-            const queryParams = `?months_lookback=${months}&opportunity_type=${oppType}`;
+            const queryParams = `?months_lookback=${months}&opportunity_type=${encodeURIComponent(oppType)}`;
             fetch('/api/data/ml-predictions' + queryParams).then(res => res.json()).then(data => renderMlDashboard(data))
                 .catch(error => {
                     console.error('Error fetching ML data:', error);
@@ -338,61 +416,249 @@
         }
 
         function showLoading(containerId, title) {
-            document.getElementById(containerId).innerHTML = `<div class="flex flex-col h-full justify-center items-center text-gray-400"><h3 class="text-lg font-semibold text-white mb-4">${title}</h3><p>⏳ Loading Data...</p></div>`;
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.innerHTML = `<div class="flex flex-col h-full justify-center items-center text-gray-400"><h3 class="text-lg font-semibold text-white mb-4">${title}</h3><p>⏳ Loading Data...</p></div>`;
+            }
         }
         
         function formatValue(value, prefix = '', suffix = '') {
             let formattedValue;
+            if (typeof value !== 'number') return `${prefix}0${suffix}`;
+            
             if (prefix === '$') {
                 if (Math.abs(value) >= 1000000) formattedValue = `$${(value / 1000000).toFixed(1)}M`;
                 else if (Math.abs(value) >= 1000) formattedValue = `$${(value / 1000).toFixed(0)}K`;
-                else formattedValue = `$${value.toFixed(0)}`;
+                else formattedValue = `$${value.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
             } else {
-                formattedValue = value.toFixed(suffix === '%' ? 1 : 0);
+                formattedValue = value.toLocaleString(undefined, {maximumFractionDigits: (suffix === '%' ? 1: 0)});
             }
             return `${formattedValue}${suffix}`;
         }
 
         function renderKpiCard(elementId, data, key, prefix = '', suffix = '') {
             const kpiEl = document.getElementById(elementId);
+            if (!kpiEl) return;
             const deltaEl = document.getElementById(`${elementId}-delta`);
             const yoyEl = document.getElementById(`${elementId}-yoy`);
             
-            const currentValue = data.current ? data.current[key] : 0;
-            const previousValue = data.previous ? data.previous[key] : null;
-            const lastYearValue = data.last_year ? data.last_year[key] : null;
-            
+            const currentValue = (data.current && data.current[key] !== null) ? data.current[key] : 0;
+            const previousValue = (data.previous && data.previous[key] !== null) ? data.previous[key] : null;
+            const lastYearValue = (data.last_year && data.last_year[key] !== null) ? data.last_year[key] : null;
+
             kpiEl.textContent = formatValue(currentValue, prefix, suffix);
             
-            if (deltaEl) {
-                deltaEl.textContent = '';
-                if (previousValue !== null) {
-                    const delta = currentValue - previousValue;
-                    let percentChangeText = '';
-                    if (previousValue !== 0) {
-                        const percentChange = (delta / previousValue) * 100;
-                        percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
-                    }
-                    const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
-                    deltaEl.textContent = `${deltaText}${percentChangeText} vs Previous Period`;
-                    deltaEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            if (deltaEl && previousValue !== null) {
+                const delta = currentValue - previousValue;
+                let percentChangeText = '';
+                if (previousValue !== 0) {
+                    const percentChange = (delta / Math.abs(previousValue)) * 100;
+                    percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
                 }
+                const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
+                deltaEl.textContent = `${deltaText}${percentChangeText} vs Previous Period`;
+                deltaEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            } else if (deltaEl) {
+                deltaEl.textContent = '';
             }
 
-            if (yoyEl) {
-                yoyEl.textContent = '';
-                if (lastYearValue !== null) {
-                    const delta = currentValue - lastYearValue;
-                    let percentChangeText = '';
-                    if (lastYearValue !== 0) {
-                        const percentChange = (delta / lastYearValue) * 100;
-                        percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
-                    }
-                    const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
-                    yoyEl.textContent = `${deltaText}${percentChangeText} vs Last Year`;
-                    yoyEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            if (yoyEl && lastYearValue !== null) {
+                const delta = currentValue - lastYearValue;
+                let percentChangeText = '';
+                if (lastYearValue !== 0) {
+                    const percentChange = (delta / Math.abs(lastYearValue)) * 100;
+                    percentChangeText = ` (${delta >= 0 ? '▲' : '▼'}${Math.abs(percentChange).toFixed(0)}%)`;
                 }
+                const deltaText = `${delta >= 0 ? '+' : ''}${formatValue(delta, prefix, suffix)}`;
+                yoyEl.textContent = `${deltaText}${percentChangeText} vs Last Year`;
+                yoyEl.className = `font-semibold ${delta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            } else if (yoyEl) {
+                yoyEl.textContent = '';
             }
+        }
+        
+        function renderOpenPipelineChart(data) {
+            const container = document.getElementById('pipeline-chart-container');
+            container.innerHTML = '';
+            if (!data || !data.stages || data.stages.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No open pipeline data available.</p>';
+                return;
+            }
+
+            const barLabels = data.amounts.map((amount, index) => {
+                const count = data.counts[index];
+                return `${formatValue(amount, '$')} (${count} opps)`;
+            });
+
+            const trace = {
+                type: 'bar',
+                y: data.stages,
+                x: data.amounts,
+                text: barLabels,
+                textposition: 'inside',
+                insidetextanchor: 'middle',
+                textfont: { color: 'white', weight: 'bold', size: 16 },
+                orientation: 'h',
+                marker: {
+                    color: 'rgba(59, 130, 246, 0.8)'
+                }
+            };
+
+            const layout = {
+                template: 'plotly_dark',
+                font: { family: "Inter, sans-serif", color: "white" },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 150, r: 20, t: 20, b: 50 },
+                xaxis: { title: 'Total Amount', tickprefix: '$' },
+                yaxis: { autorange: 'reversed' }
+            };
+
+            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false});
+        }
+
+        function renderSalesPacingChart(data) {
+            const container = document.getElementById('sales-pacing-chart-container');
+            container.innerHTML = ''; 
+            if (!data || !data.labels || data.labels.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No sales pacing data available.</p>'; return;
+            }
+
+            const bookingsTrace = {
+                x: data.labels,
+                y: data.cumulative_bookings,
+                name: 'Cumulative Bookings',
+                type: 'bar',
+                marker: { color: 'rgba(59, 130, 246, 0.8)' }
+            };
+
+            const quotaTrace = {
+                x: data.labels,
+                y: data.cumulative_quota,
+                name: 'Cumulative Quota',
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: 'rgba(251, 191, 36, 0.9)', width: 3 },
+                marker: { size: 7, color: 'rgba(251, 191, 36, 1)' }
+            };
+
+            const layout = {
+                template: 'plotly_dark',
+                font: { family: "Inter, sans-serif", color: "white" },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                legend: {orientation: "h", y: -0.2, x: 0.5, xanchor: "center", yanchor: "bottom"},
+                margin: { l: 80, r: 20, t: 60, b: 80 },
+                yaxis: { title: 'Amount', tickprefix: '$' },
+                xaxis: { title: 'Month' }
+            };
+
+            Plotly.newPlot(container, [bookingsTrace, quotaTrace], layout, {responsive: true, displaylogo: false});
+        }
+
+        function renderBillingCountryMap(data) {
+            const container = document.getElementById('billing-map-chart-container');
+            container.innerHTML = '';
+            if (!data || !data.locations || data.locations.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No billing address data available.</p>'; return;
+            }
+
+            const lightBlueColors = [
+                [0, 'rgb(235, 245, 255)'], [0.25, 'rgb(191, 219, 254)'],
+                [0.5, 'rgb(147, 197, 253)'], [0.75, 'rgb(96, 165, 250)'],
+                [1, 'rgb(59, 130, 246)']
+            ];
+
+            const trace = {
+                type: 'choropleth',
+                locationmode: data.location_mode,
+                locations: data.locations,
+                z: data.z,
+                text: data.locations,
+                colorscale: lightBlueColors,
+                reversescale: false,
+                colorbar: {
+                    title: 'Opp Count',
+                    ticksuffix: '',
+                    showticksuffix: 'last'
+                }
+            };
+
+            const layout = {
+                template: 'plotly_dark',
+                font: { family: "Inter, sans-serif", color: "white" },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                geo: {
+                    bgcolor: 'rgba(0,0,0,0)',
+                    showland: true,
+                    landcolor: '#374151',
+                    subunitcolor: '#4B5563',
+                    countrycolor: '#4B5563',
+                    scope: 'world', // Default scope
+                    projection: {
+                        type: 'robinson'
+                    }
+                }
+            };
+            
+            if(data.scope === 'europe') {
+                layout.geo.scope = 'europe';
+                layout.geo.lataxis = { range: [35, 70] };
+                layout.geo.lonaxis = { range: [-10, 40] };
+            } else if (data.scope === 'asia') {
+                layout.geo.scope = 'asia';
+                layout.geo.lataxis = { range: [-10, 55] };
+                layout.geo.lonaxis = { range: [60, 140] };
+            } else if (data.scope === 'latin_america') {
+                layout.geo.scope = 'south america'; 
+            }
+
+            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false});
+        }
+
+        function renderUsaStateMap(data) {
+            const container = document.getElementById('usa-map-chart-container');
+            container.innerHTML = '';
+            if (!data || !data.locations || data.locations.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No USA billing address data available.</p>'; return;
+            }
+            
+            const lightBlueColors = [
+                [0, 'rgb(235, 245, 255)'], [0.25, 'rgb(191, 219, 254)'],
+                [0.5, 'rgb(147, 197, 253)'], [0.75, 'rgb(96, 165, 250)'],
+                [1, 'rgb(59, 130, 246)']
+            ];
+
+            const trace = {
+                type: 'choropleth',
+                locationmode: 'USA-states',
+                locations: data.locations,
+                z: data.z,
+                text: data.locations,
+                colorscale: lightBlueColors,
+                reversescale: false,
+                colorbar: {
+                    title: 'Opp Count',
+                    ticksuffix: '',
+                    showticksuffix: 'last'
+                }
+            };
+
+            const layout = {
+                template: 'plotly_dark',
+                font: { family: "Inter, sans-serif", color: "white" },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                geo: {
+                    bgcolor: 'rgba(0,0,0,0)',
+                    scope: 'usa',
+                    lakecolor: '#111827'
+                }
+            };
+            Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false});
         }
 
         function renderForecastChart(data) {
@@ -407,7 +673,7 @@
                 traces.push({y: data.regions, x: data.bar_data[cat], name: cat, type: 'bar', orientation: 'h', marker: {color: color_map[cat]}, text: data.bar_data[cat].map(v => v > 0 ? `${(v/1000).toFixed(0)}k` : ''), textposition: 'inside', insidetextanchor: 'middle', textfont: {color: 'white', weight: 'bold', size: 16}});
             });
             traces.push({y: data.line_data.regions, x: data.line_data.counts, name: 'Opp Count', type: 'scatter', mode: 'lines+markers', orientation: 'h', xaxis: 'x2', line: {color: 'rgba(251, 191, 36, 0.9)', width: 4}, marker: {size: 8, color: 'rgba(251, 191, 36, 1)'}});
-            const layout = {title: '<b>Opportunity Forecast</b>', barmode: 'group', legend: {orientation: "h", y: -0.3, x: 0.5, xanchor: "center", yanchor: "bottom"}, template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 80}, yaxis: {title: 'Sales Region', autorange: 'reversed'}, xaxis: {title: 'Total Amount', tickprefix: '$'}, xaxis2: {title: 'Opp Count', overlaying: 'x', side: 'top', showgrid: false}};
+            const layout = {title: '<b>Opportunity Forecast</b>', barmode: 'group', legend: {orientation: "h", y: -0.3, x: 0.5, xanchor: "center", yanchor: "bottom"}, template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 120, r: 20, t: 60, b: 80}, yaxis: {title: 'Sales Region', autorange: 'reversed'}, xaxis: {title: 'Total Amount', tickprefix: '$'}, xaxis2: {title: 'Opp Count', overlaying: 'x', side: 'top', showgrid: false}};
             Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d']});
         }
 
@@ -419,7 +685,7 @@
             }
             
             const traces = [];
-            const regionColors = ['#2B6CB0', '#38A169', '#4299E1', '#48BB78', '#2C5282', '#2F855A'];
+            const regionColors = ['#3182CE', '#38A169', '#63B3ED', '#A0AEC0', '#2C5282', '#718096'];
             data.regions.forEach((region, index) => {
                 traces.push({
                     x: data.labels,
@@ -444,18 +710,18 @@
             Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false, modeBarButtonsToRemove: ['select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']});
         }
 
-        function renderSdrActivityChart(containerId, title, yAxisTitle, data) {
+        function renderSdrActivityChart(containerId, data) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
             if (!data || !data.labels || data.labels.length === 0) {
-                container.innerHTML = `<p class="text-center h-full flex items-center justify-center text-gray-400">No data available for ${title}.</p>`; return;
+                container.innerHTML = `<p class="text-center h-full flex items-center justify-center text-gray-400">No data available.</p>`; return;
             }
-            const sdrColors = ['#2B6CB0', '#38A169', '#4299E1', '#48BB78'];
+            const sdrColors = ['#3182CE', '#38A169', '#63B3ED', '#A0AEC0'];
             const traces = [];
             data.sdr_names.forEach((name, index) => {
                 traces.push({x: data.labels, y: data.sdr_data[name], name: name, type: 'bar', marker: {color: sdrColors[index % sdrColors.length]}, text: data.sdr_data[name].map(v => v > 0 ? v : ''), textposition: 'inside', insidetextanchor: 'middle', textfont: {color: 'white', weight: 'bold', size: 16}});
             });
-            const layout = {title: `<b>${title}</b>`, barmode: 'group', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 60, b: 50}, yaxis: {title: yAxisTitle}, xaxis: {title: 'Month'}};
+            const layout = {barmode: 'group', template: 'plotly_dark', font: {family: "Inter, sans-serif", color: "white"}, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', margin: {l: 80, r: 20, t: 20, b: 50}, yaxis: {title: 'Count'}, xaxis: {title: 'Month'}};
             Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false});
         }
         
@@ -487,7 +753,7 @@
                 x: filteredPercentages,
                 type: 'bar',
                 orientation: 'h',
-                marker: { color: '#2B6CB0' },
+                marker: { color: '#3182CE' },
                 text: filteredPercentages.map(p => `${p.toFixed(1)}%`),
                 textposition: 'inside',
                 insidetextanchor: 'middle',
@@ -503,6 +769,31 @@
                 yaxis: {autorange: 'reversed'}
             };
             Plotly.newPlot(container, [trace], layout, {responsive: true, displaylogo: false});
+        }
+        
+        function renderRepClosedVsQuotaChart(data) {
+            const container = document.getElementById('rep-closed-vs-quota-chart-container');
+            container.innerHTML = '';
+            if (!data || !data.reps || data.reps.length === 0) {
+                container.innerHTML = '<p class="text-center h-full flex items-center justify-center text-gray-400">No rep data available.</p>'; return;
+            }
+            
+            const traces = [
+                { y: data.reps, x: data.bookings, name: 'Closed Won', type: 'bar', orientation: 'h', marker: { color: '#38A169' } },
+                { y: data.reps, x: data.quotas, name: 'Quota', type: 'bar', orientation: 'h', marker: { color: '#A0AEC0' } }
+            ];
+
+            const layout = {
+                barmode: 'group',
+                template: 'plotly_dark',
+                font: {family: "Inter, sans-serif", color: "white"},
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: {l: 150, r: 20, t: 20, b: 50},
+                xaxis: {title: 'Amount ($)', tickprefix: '$'},
+                yaxis: {autorange: 'reversed'}
+            };
+            Plotly.newPlot(container, traces, layout, {responsive: true, displaylogo: false});
         }
         
         function renderMlDashboard(data) {
@@ -529,7 +820,7 @@
             }
             reportHtml += `</tbody></table></div>`;
             
-            const features = data.feature_importances.map(f => f.Feature.replace(/__/g, ' ')).reverse();
+            const features = data.feature_importances.map(f => f.Feature.replace(/__/g, ' ').replace(/_/g, ' ')).reverse();
             const importances = data.feature_importances.map(f => f.Importance).reverse();
             reportHtml += `<div class="card col-span-1 md:col-span-2"><div id="feature-importance-chart" style="height: 800px;"></div></div>`;
 
